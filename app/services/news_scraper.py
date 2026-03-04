@@ -46,11 +46,12 @@ async def scrape_with_firecrawl(url: str, source_name: str) -> list[dict]:
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
-                "https://api.firecrawl.dev/v0/scrape",
-                json={"url": url, "pageOptions": {"onlyMainContent": True}},
+                "https://api.firecrawl.dev/v1/scrape",
+                json={"url": url, "formats": ["markdown"], "onlyMainContent": True},
                 headers={"Authorization": f"Bearer {settings.firecrawl_api_key}"},
             )
             if resp.status_code != 200:
+                logger.warning(f"Firecrawl returned {resp.status_code} for {url}: {resp.text[:200]}")
                 return articles
             content = resp.json().get("data", {}).get("markdown", "")
             for line in content.split("\n"):

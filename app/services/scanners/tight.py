@@ -101,16 +101,19 @@ def run_tight_scanner(db: Client, scan_date: date) -> int:
         final_score = round(raw_score / total_weight, 2) if total_weight > 0 else 0
 
         if final_score >= min_score:
+            vol_ratio = round(vol_lookback / vol_prior, 4) if vol_prior > 0 else 0
+            # Look up company name from nse_stocks
+            stock_info = db.table("nse_stocks").select("name").eq("symbol", symbol).limit(1).execute()
+            company_name = stock_info.data[0]["name"] if stock_info.data else symbol
+
             results.append({
                 "scan_date": str(scan_date), "symbol": symbol,
-                "scanner_type": SCANNER_ID, "score": final_score,
-                "metrics_json": {
-                    "range_tightness": range_score, "volume_contraction": vol_score,
-                    "days_in_range": days_score, "range_pct": round(range_pct, 2),
-                    "vol_ratio": round(vol_lookback / vol_prior, 3) if vol_prior > 0 else None,
-                    "days_in": days_in, "lookback": lookback,
-                    "close": current_close, "high_n": round(high_n, 2), "low_n": round(low_n, 2),
-                },
+                "scanner_type": SCANNER_ID, "score": int(round(final_score)),
+                "close_price": round(current_close, 2),
+                "range_pct": round(range_pct, 2),
+                "volume_dry_ratio": vol_ratio,
+                "scanner_tag": "tight",
+                "company_name": company_name,
             })
 
     if results:

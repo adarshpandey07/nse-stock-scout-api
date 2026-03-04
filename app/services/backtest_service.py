@@ -22,7 +22,7 @@ def run_backtest(db: Client, user_pin: str, date_from: date, date_to: date,
     # Use RPC for complex query
     scan_results = db.rpc("exec_sql", {
         "query": f"""
-            SELECT scan_date, symbol, score, metrics_json
+            SELECT scan_date, symbol, score
             FROM scan_results
             WHERE scanner_type = {scanner_type}
               AND scan_date BETWEEN '{date_from}' AND '{date_to}'

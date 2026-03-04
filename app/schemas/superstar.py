@@ -28,7 +28,7 @@ class SuperstarHoldingOut(BaseModel):
     qty: int
     value: Decimal
     change_type: str
-    change_pct: Decimal
+    change_pct: Decimal | None = None
     reported_date: date | None
     quarter: str
 

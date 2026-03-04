@@ -36,12 +36,19 @@ def get_fundamentals(symbol: str, db: DB, _user: CurrentUser):
 
 
 @router.post("/refresh-instruments")
-async def refresh_instruments(db: DB, _user: AdminUser, user_pin: str = Query(...)):
-    """Refresh NSE instrument list from Kite API."""
+async def refresh_instruments(db: DB, _user: AdminUser, source: str = Query("nse"), user_pin: str = Query(None)):
+    """Refresh NSE instrument list. source=nse (free) or kite (requires credentials)."""
     try:
-        acct = _get_kite_account(db, user_pin)
-        count = instruments_service.refresh_instruments_from_kite(db, acct.api_key, acct.access_token)
-        return {"status": "ok", "new_instruments": count}
+        if source == "kite":
+            if not user_pin:
+                raise HTTPException(status_code=400, detail="user_pin required for Kite source")
+            acct = _get_kite_account(db, user_pin)
+            count = instruments_service.refresh_instruments_from_kite(db, acct.api_key, acct.access_token)
+        else:
+            count = await instruments_service.refresh_instruments_from_nse(db)
+        return {"status": "ok", "new_instruments": count, "source": source}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

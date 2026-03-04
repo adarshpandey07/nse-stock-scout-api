@@ -6,7 +6,7 @@ from supabase import Client
 
 logger = logging.getLogger(__name__)
 
-SENTIMENT_WEIGHTS = {"positive": 1.0, "neutral": 0.5, "negative": 0.0}
+SENTIMENT_WEIGHTS = {"bullish": 1.0, "neutral": 0.5, "bearish": 0.0}
 
 
 def score_article_sentiment(headline: str, summary: str) -> str:
@@ -24,9 +24,9 @@ def score_article_sentiment(headline: str, summary: str) -> str:
     pos_count = sum(1 for w in positive_words if w in text)
     neg_count = sum(1 for w in negative_words if w in text)
     if pos_count > neg_count:
-        return "positive"
+        return "bullish"
     elif neg_count > pos_count:
-        return "negative"
+        return "bearish"
     return "neutral"
 
 
@@ -38,7 +38,7 @@ def update_article_sentiments(db: Client, symbol: str | None = None) -> int:
 
     for article in articles:
         sentiment = score_article_sentiment(article["headline"], article.get("summary", ""))
-        news_score = 8 if sentiment == "positive" else (2 if sentiment == "negative" else 5)
+        news_score = 8 if sentiment == "bullish" else (2 if sentiment == "bearish" else 5)
         db.table("stock_news").update({
             "sentiment": sentiment,
             "news_score": news_score,
@@ -72,14 +72,14 @@ def compute_pointer_score(db: Client, symbol: str) -> dict | None:
         score = sentiment_val * credibility
         weighted_score += score
         total_weight += credibility
-        if a.get("sentiment") == "positive":
+        if a.get("sentiment") == "bullish":
             pos += 1
-        elif a.get("sentiment") == "negative":
+        elif a.get("sentiment") == "bearish":
             neg += 1
         else:
             neu += 1
 
-    pointer = round(weighted_score / total_weight, 2) if total_weight > 0 else 5.0
+    pointer = round((weighted_score / total_weight) * 10, 2) if total_weight > 0 else 5.0
     pointer = min(10, max(0, pointer))
 
     row = {

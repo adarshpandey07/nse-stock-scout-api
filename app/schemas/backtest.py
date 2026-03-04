@@ -17,12 +17,12 @@ class BacktestRunOut(BaseModel):
     date_from: date
     date_to: date
     strategy: str
-    criteria_used: dict
-    result_json: dict
-    total_trades: int
-    winning_trades: int
-    pnl: Decimal
-    pnl_pct: Decimal
+    criteria_used: dict | None = {}
+    result_json: dict | None = {}
+    total_trades: int | None = 0
+    winning_trades: int | None = 0
+    pnl: Decimal | None = None
+    pnl_pct: Decimal | None = None
     status: str
     created_at: datetime
 

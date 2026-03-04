@@ -121,17 +121,19 @@ def run_vcp_scanner(db: Client, scan_date: date) -> int:
         final_score = round(raw_score / total_weight, 2) if total_weight > 0 else 0
 
         if final_score >= min_score:
+            vol_ratio = round(vol_recent / vol_prior, 4) if vol_prior > 0 else 0
+            # Look up company name from nse_stocks
+            stock_info = db.table("nse_stocks").select("name").eq("symbol", symbol).limit(1).execute()
+            company_name = stock_info.data[0]["name"] if stock_info.data else symbol
+
             results.append({
                 "scan_date": str(scan_date), "symbol": symbol,
-                "scanner_type": SCANNER_ID, "score": final_score,
-                "metrics_json": {
-                    "sma_trend": sma_score, "atr_contraction": atr_score,
-                    "tightness": tight_score, "volume_dry": vol_score,
-                    "range_pct_10d": round(range_pct, 2),
-                    "atr_ratio": round(atr_recent / atr_prior, 3) if atr_prior > 0 else None,
-                    "vol_ratio": round(vol_recent / vol_prior, 3) if vol_prior > 0 else None,
-                    "close": current_close, "sma_50": round(sma_50, 2),
-                },
+                "scanner_type": SCANNER_ID, "score": int(round(final_score)),
+                "close_price": round(current_close, 2),
+                "range_pct": round(range_pct, 2),
+                "volume_dry_ratio": vol_ratio,
+                "scanner_tag": "vcp",
+                "company_name": company_name,
             })
 
     if results:

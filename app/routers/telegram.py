@@ -1,10 +1,18 @@
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from app.dependencies import AdminUser, CurrentUser, DB
 from app.schemas.telegram import TelegramConfigOut, TelegramConfigRequest
 from app.services.telegram_service import (
-    get_telegram_config, save_telegram_config, send_alert_to_user, send_daily_summary,
+    broadcast_alert, get_telegram_config, save_telegram_config,
+    send_alert_to_user, send_daily_summary,
 )
+
+
+class AlertRequest(BaseModel):
+    user_pin: str | None = None
+    message: str
+    broadcast: bool = False
 
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
@@ -33,3 +41,39 @@ async def test_message(db: DB, _user: CurrentUser, user_pin: str = Query(...)):
 async def trigger_daily_summary(db: DB, _user: AdminUser):
     sent = await send_daily_summary(db)
     return {"summaries_sent": sent}
+
+
+@router.post("/alert/trade")
+async def send_trade_alert(req: AlertRequest, db: DB, _user: CurrentUser):
+    """Send trade confirmation alert via Telegram."""
+    if req.broadcast:
+        sent = await broadcast_alert(db, f"<b>Trade Alert</b>\n{req.message}")
+        return {"sent_to": sent}
+    if not req.user_pin:
+        raise HTTPException(400, "user_pin required when not broadcasting")
+    ok = await send_alert_to_user(db, req.user_pin, f"<b>Trade Alert</b>\n{req.message}")
+    return {"sent": ok}
+
+
+@router.post("/alert/scanner")
+async def send_scanner_alert(req: AlertRequest, db: DB, _user: CurrentUser):
+    """Send scanner result alert via Telegram."""
+    if req.broadcast:
+        sent = await broadcast_alert(db, f"<b>Scanner Alert</b>\n{req.message}")
+        return {"sent_to": sent}
+    if not req.user_pin:
+        raise HTTPException(400, "user_pin required when not broadcasting")
+    ok = await send_alert_to_user(db, req.user_pin, f"<b>Scanner Alert</b>\n{req.message}")
+    return {"sent": ok}
+
+
+@router.post("/alert/action")
+async def send_action_alert(req: AlertRequest, db: DB, _user: CurrentUser):
+    """Send action item alert via Telegram."""
+    if req.broadcast:
+        sent = await broadcast_alert(db, f"<b>Action Required</b>\n{req.message}")
+        return {"sent_to": sent}
+    if not req.user_pin:
+        raise HTTPException(400, "user_pin required when not broadcasting")
+    ok = await send_alert_to_user(db, req.user_pin, f"<b>Action Required</b>\n{req.message}")
+    return {"sent": ok}

@@ -18,7 +18,7 @@ from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.database import SessionLocal
+from app.database import get_db
 from app.services.bhavcopy import fetch_bhavcopy
 from app.services.scanners import run_tight_scanner, run_vcp_scanner
 from app.utils import last_trading_day
@@ -32,11 +32,11 @@ USER_PINS = ["aadarsh", "parth", "vardhaman"]
 async def job_daily_scan():
     """4:00 PM — Bhavcopy fetch + both scanners."""
     today = last_trading_day()
-    db = SessionLocal()
+    db = get_db()
     try:
         logger.info(f"[4:00 PM] Starting daily scan for {today}")
         run = await fetch_bhavcopy(db, today)
-        logger.info(f"Fetch: {run.status} — inserted={run.inserted_count}")
+        logger.info(f"Fetch completed: {run}")
 
         vcp_count = run_vcp_scanner(db, today)
         logger.info(f"VCP scanner: {vcp_count} results")
@@ -45,91 +45,77 @@ async def job_daily_scan():
         logger.info(f"Tight scanner: {tight_count} results")
     except Exception as e:
         logger.error(f"Daily scan failed: {e}")
-    finally:
-        db.close()
 
 
 async def job_portfolio_snapshots():
     """4:05 PM — Snapshot portfolio for all 3 users."""
-    from app.models.portfolio import PortfolioSnapshot, UserPortfolio
-
-    db = SessionLocal()
+    db = get_db()
     try:
         today = date.today()
         for user_pin in USER_PINS:
-            holdings = db.query(UserPortfolio).filter(UserPortfolio.user_pin == user_pin).all()
-            if not holdings:
+            holdings = db.table("user_portfolios").select("*").eq("user_pin", user_pin).execute()
+            if not holdings.data:
                 continue
 
-            total_invested = sum(float(h.invested_value or 0) for h in holdings)
-            total_current = sum(float(h.current_value or 0) for h in holdings)
+            total_invested = sum(float(h.get("invested_value", 0) or 0) for h in holdings.data)
+            total_current = sum(float(h.get("current_value", 0) or 0) for h in holdings.data)
             total_pnl = total_current - total_invested
             total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
 
-            snapshot = PortfolioSnapshot(
-                user_pin=user_pin,
-                snapshot_date=today,
-                holdings=[{
-                    "symbol": h.symbol, "qty": h.qty,
-                    "avg_price": float(h.avg_price),
-                    "current_price": float(h.current_price),
-                    "pnl": float(h.pnl or 0),
-                } for h in holdings],
-                total_invested=total_invested,
-                total_current=total_current,
-                total_pnl=total_pnl,
-                total_pnl_pct=round(total_pnl_pct, 2),
-            )
-            db.add(snapshot)
+            db.table("portfolio_snapshots").insert({
+                "user_pin": user_pin,
+                "snapshot_date": str(today),
+                "holdings": [{
+                    "symbol": h["symbol"], "qty": h.get("qty"),
+                    "avg_price": float(h.get("avg_price", 0)),
+                    "current_price": float(h.get("current_price", 0)),
+                    "pnl": float(h.get("pnl", 0) or 0),
+                } for h in holdings.data],
+                "total_invested": total_invested,
+                "total_current": total_current,
+                "total_pnl": total_pnl,
+                "total_pnl_pct": round(total_pnl_pct, 2),
+            }).execute()
 
-        db.commit()
         logger.info(f"[4:05 PM] Portfolio snapshots saved for {len(USER_PINS)} users")
     except Exception as e:
         logger.error(f"Portfolio snapshot failed: {e}")
-    finally:
-        db.close()
 
 
 async def job_f_scanner():
     """4:10 PM — Run F1/F2/F3 scanner."""
     from app.services.scanners.fundamental import run_f_scanner
 
-    db = SessionLocal()
+    db = get_db()
     try:
-        run = run_f_scanner(db)
-        logger.info(f"[4:10 PM] F-Scanner: {run.all_pass}/{run.total_stocks} passed all groups")
+        result = run_f_scanner(db)
+        logger.info(f"[4:10 PM] F-Scanner completed: {result}")
     except Exception as e:
         logger.error(f"F-Scanner failed: {e}")
-    finally:
-        db.close()
 
 
 async def job_generate_actions():
     """4:15 PM — Generate action items from scan results."""
     from app.services.action_engine import generate_actions_from_scan
 
-    db = SessionLocal()
+    db = get_db()
     try:
         count = generate_actions_from_scan(db)
         logger.info(f"[4:15 PM] Generated {count} action items")
     except Exception as e:
         logger.error(f"Action generation failed: {e}")
-    finally:
-        db.close()
 
 
 async def job_telegram_summary():
     """4:30 PM — Send daily summary via Telegram."""
     from app.services.telegram_service import send_daily_summary
 
-    db = SessionLocal()
+    db = get_db()
     try:
         sent = await send_daily_summary(db)
         logger.info(f"[4:30 PM] Telegram daily summary sent to {sent} users")
     except Exception as e:
         logger.error(f"Telegram summary failed: {e}")
-    finally:
-        db.close()
 
 
 async def job_news_scrape():
@@ -137,29 +123,29 @@ async def job_news_scrape():
     from app.services.news_scorer import update_article_sentiments
     from app.services.news_scraper import scrape_all_sources
 
-    db = SessionLocal()
+    db = get_db()
     try:
         count = await scrape_all_sources(db)
         scored = update_article_sentiments(db)
         logger.info(f"[News] Scraped {count} articles, scored {scored}")
     except Exception as e:
         logger.error(f"News scraping failed: {e}")
-    finally:
-        db.close()
 
 
 async def job_weekly_refresh():
     """Weekly Sunday 7:30 PM — Refresh instruments + fundamentals."""
     from app.services.fundamentals_service import refresh_all_fundamentals
+    from app.services.instruments_service import refresh_instruments_from_nse
 
-    db = SessionLocal()
+    db = get_db()
     try:
-        count = await refresh_all_fundamentals(db)
-        logger.info(f"[Weekly] Refreshed fundamentals for {count} stocks")
+        inst_count = await refresh_instruments_from_nse(db)
+        logger.info(f"[Weekly] Refreshed instruments: {inst_count} new stocks")
+
+        fund_count = await refresh_all_fundamentals(db)
+        logger.info(f"[Weekly] Refreshed fundamentals for {fund_count} stocks")
     except Exception as e:
         logger.error(f"Weekly refresh failed: {e}")
-    finally:
-        db.close()
 
 
 async def main():
