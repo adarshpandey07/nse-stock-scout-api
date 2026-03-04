@@ -36,6 +36,28 @@ async def trigger_scrape(db: DB, _user: AdminUser, investor_id: str = Query(None
         return {"total_holdings_scraped": count}
 
 
+@router.get("/cross-reference")
+def cross_reference(db: DB, _user: CurrentUser, min_investors: int = Query(2, ge=2)):
+    """Stocks held by multiple superstar investors."""
+    holdings = db.table("superstar_holdings").select("symbol, investor_id").execute().data
+    investors = {i["id"]: i["name"] for i in db.table("superstar_investors").select("id, name").execute().data}
+
+    symbol_map: dict[str, set[str]] = {}
+    for h in holdings:
+        symbol_map.setdefault(h["symbol"], set()).add(h["investor_id"])
+
+    results = []
+    for symbol, inv_ids in symbol_map.items():
+        if len(inv_ids) >= min_investors:
+            results.append({
+                "symbol": symbol,
+                "investor_count": len(inv_ids),
+                "investors": sorted([investors.get(iid, iid) for iid in inv_ids]),
+            })
+    results.sort(key=lambda x: x["investor_count"], reverse=True)
+    return results
+
+
 @router.get("/changes")
 def recent_changes(db: DB, _user: CurrentUser, limit: int = Query(50, le=100)):
     return get_recent_changes(db, limit)

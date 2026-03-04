@@ -31,9 +31,18 @@ def save_config(req: TelegramConfigRequest, db: DB, _user: CurrentUser):
     return config
 
 
+class TestMessageRequest(BaseModel):
+    message: str = "🔔 Test alert from NSE Stock Scout!"
+
+
 @router.post("/test")
-async def test_message(db: DB, _user: CurrentUser, user_pin: str = Query(...)):
-    success = await send_alert_to_user(db, user_pin, "🔔 Test alert from NSE Stock Scout!")
+async def test_message(
+    db: DB, _user: CurrentUser,
+    user_pin: str = Query(...),
+    body: TestMessageRequest | None = None,
+):
+    text = body.message if body and body.message else "🔔 Test alert from NSE Stock Scout!"
+    success = await send_alert_to_user(db, user_pin, text)
     return {"sent": success}
 
 
