@@ -10,13 +10,13 @@ class TradeOut(BaseModel):
     side: str
     qty: int
     price: Decimal
-    brokerage: Decimal
-    stt: Decimal
-    total: Decimal
-    order_id: str
-    status: str
-    notes: str
-    executed_at: datetime
+    brokerage: Decimal | None = None
+    stt: Decimal | None = None
+    total: Decimal | None = None
+    order_id: str | None = None
+    status: str | None = None
+    notes: str | None = None
+    executed_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

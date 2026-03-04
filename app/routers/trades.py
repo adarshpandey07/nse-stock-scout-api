@@ -2,7 +2,7 @@ from fastapi import APIRouter, Query
 
 from app.dependencies import CurrentUser, DB
 from app.schemas.trade import TradeOut
-from app.services.trade_service import get_trades
+from app.services.trade_service import get_user_trades as get_trades
 
 router = APIRouter(prefix="/trades", tags=["trades"])
 

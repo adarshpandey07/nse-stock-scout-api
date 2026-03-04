@@ -4,7 +4,7 @@ from supabase import Client
 
 def get_dashboard_summary(db: Client, user_pin: str) -> dict:
     # Portfolio summary
-    holdings = db.table("portfolio_snapshots").select("*").eq("user_pin", user_pin).execute().data
+    holdings = db.table("user_portfolio").select("*").eq("user_pin", user_pin).execute().data
     total_invested = sum(float(h.get("invested_value") or 0) for h in holdings)
     total_current = sum(float(h.get("current_value") or 0) for h in holdings)
     total_pnl = total_current - total_invested
@@ -19,7 +19,7 @@ def get_dashboard_summary(db: Client, user_pin: str) -> dict:
     pending_actions = actions_res.count or 0
 
     # Watchlist count
-    wl_res = db.table("watchlist").select("id", count="exact").eq("user_pin", user_pin).execute()
+    wl_res = db.table("watchlist_items").select("id", count="exact").eq("user_pin", user_pin).execute()
     watchlist_count = wl_res.count or 0
 
     # Latest scan results
@@ -36,9 +36,9 @@ def get_dashboard_summary(db: Client, user_pin: str) -> dict:
     f_res = (
         db.table("stock_fundamentals")
         .select("id", count="exact")
-        .eq("f1_status", True)
-        .eq("f2_status", True)
-        .eq("f3_status", True)
+        .eq("f1_status", "pass")
+        .eq("f2_status", "pass")
+        .eq("f3_status", "pass")
         .execute()
     )
     f_all = f_res.count or 0

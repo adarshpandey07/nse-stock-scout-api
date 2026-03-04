@@ -5,13 +5,13 @@ from pydantic import BaseModel
 
 class NseStockOut(BaseModel):
     symbol: str
-    name: str
-    sector: str
-    industry: str
-    market_cap: Decimal
-    isin: str
-    series: str
-    is_active: bool
+    name: str | None = None
+    sector: str | None = None
+    industry: str | None = None
+    market_cap: Decimal | None = None
+    isin: str | None = None
+    series: str | None = None
+    is_active: bool = True
 
     model_config = {"from_attributes": True}
 
@@ -36,9 +36,9 @@ class StockFundamentalsOut(BaseModel):
     rsi: Decimal = 0
     dma_50: Decimal = 0
     dma_200: Decimal = 0
-    f1_status: bool = False
-    f2_status: bool = False
-    f3_status: bool = False
+    f1_status: str | None = None
+    f2_status: str | None = None
+    f3_status: str | None = None
     f1_score: Decimal = 0
     f2_score: Decimal = 0
     f3_score: Decimal = 0

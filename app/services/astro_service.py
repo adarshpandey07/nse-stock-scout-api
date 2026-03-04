@@ -7,16 +7,14 @@ logger = logging.getLogger(__name__)
 
 
 def get_commodity_signals(db: Client) -> list[dict]:
-    result = db.rpc("exec_sql", {
-        "query": """
-            SELECT commodity_name, date, prediction,
-                   total_shubh_score, total_krur_score, net_score,
-                   reasoning, created_at
-            FROM sbc_daily_predictions
-            ORDER BY date DESC, commodity_name
-            LIMIT 50
-        """
-    }).execute()
+    result = (
+        db.table("sbc_daily_predictions")
+        .select("commodity_name, date, prediction, total_shubh_score, total_krur_score, net_score, reasoning, created_at")
+        .order("date", desc=True)
+        .order("commodity_name")
+        .limit(50)
+        .execute()
+    )
     rows = result.data or []
     return [
         {
@@ -34,26 +32,26 @@ def get_commodity_signals(db: Client) -> list[dict]:
 
 
 def get_planet_positions(db: Client) -> list[dict]:
-    result = db.rpc("exec_sql", {
-        "query": """
-            SELECT pp.date, g.name_en AS planet_name,
-                   r.name_en AS rashi, n.name_en AS nakshatra,
-                   pp.longitude_degrees, pp.is_vakri
-            FROM sbc_planet_positions pp
-            JOIN sbc_grahas g ON g.id = pp.graha_id
-            LEFT JOIN sbc_rashis r ON r.id = pp.rashi_id
-            LEFT JOIN sbc_nakshatras n ON n.id = pp.nakshatra_id
-            ORDER BY pp.date DESC, g.name_en
-            LIMIT 50
-        """
-    }).execute()
+    result = (
+        db.table("sbc_planet_positions")
+        .select("date, graha_id, rashi_id, nakshatra_id, longitude_degrees, is_vakri")
+        .order("date", desc=True)
+        .limit(50)
+        .execute()
+    )
     rows = result.data or []
+
+    # Fetch lookup tables for names
+    grahas = {g["id"]: g["name_en"] for g in db.table("sbc_grahas").select("id, name_en").execute().data or []}
+    rashis = {r["id"]: r["name_en"] for r in db.table("sbc_rashis").select("id, name_en").execute().data or []}
+    nakshatras = {n["id"]: n["name_en"] for n in db.table("sbc_nakshatras").select("id, name_en").execute().data or []}
+
     return [
         {
-            "planet": r["planet_name"],
+            "planet": grahas.get(r["graha_id"], "Unknown"),
             "date": str(r["date"]),
-            "rashi": r.get("rashi", ""),
-            "nakshatra": r.get("nakshatra", ""),
+            "rashi": rashis.get(r.get("rashi_id"), ""),
+            "nakshatra": nakshatras.get(r.get("nakshatra_id"), ""),
             "degree": float(r["longitude_degrees"]) if r.get("longitude_degrees") else 0,
             "is_retrograde": r.get("is_vakri", False),
         }
@@ -62,16 +60,13 @@ def get_planet_positions(db: Client) -> list[dict]:
 
 
 def get_prediction_accuracy(db: Client) -> list[dict]:
-    result = db.rpc("exec_sql", {
-        "query": """
-            SELECT pa.date, pa.commodity_id, pa.predicted_direction,
-                   pa.actual_direction, pa.is_correct, pa.score_deviation,
-                   pa.actual_close, pa.previous_close
-            FROM sbc_prediction_accuracy pa
-            ORDER BY pa.date DESC
-            LIMIT 100
-        """
-    }).execute()
+    result = (
+        db.table("sbc_prediction_accuracy")
+        .select("date, commodity_id, predicted_direction, actual_direction, is_correct, score_deviation, actual_close, previous_close")
+        .order("date", desc=True)
+        .limit(100)
+        .execute()
+    )
     rows = result.data or []
     return [
         {
