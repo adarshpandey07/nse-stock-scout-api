@@ -80,10 +80,10 @@ async def scrape_all_sources(db: Client, symbol: str | None = None) -> int:
             articles = await scrape_with_firecrawl(source["url"], source["name"])
 
         for article in articles:
-            exists = db.table("news_articles").select("id").eq("headline", article["headline"]).limit(1).execute()
+            exists = db.table("stock_news").select("id").eq("headline", article["headline"]).limit(1).execute()
             if exists.data:
                 continue
-            db.table("news_articles").insert({
+            db.table("stock_news").insert({
                 "symbol": symbol,
                 "headline": article["headline"],
                 "summary": article.get("summary", ""),

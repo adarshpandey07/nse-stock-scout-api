@@ -2,9 +2,9 @@
 from supabase import Client
 
 
-def get_trades(db: Client, user_pin: str, limit: int = 50, offset: int = 0) -> list[dict]:
+def get_user_trades(db: Client, user_pin: str, limit: int = 50, offset: int = 0) -> list[dict]:
     result = (
-        db.table("trades")
+        db.table("user_trades")
         .select("*")
         .eq("user_pin", user_pin)
         .order("executed_at", desc=True)
@@ -15,5 +15,5 @@ def get_trades(db: Client, user_pin: str, limit: int = 50, offset: int = 0) -> l
 
 
 def get_trade_by_id(db: Client, trade_id: str) -> dict | None:
-    result = db.table("trades").select("*").eq("id", trade_id).limit(1).execute()
+    result = db.table("user_trades").select("*").eq("id", trade_id).limit(1).execute()
     return result.data[0] if result.data else None

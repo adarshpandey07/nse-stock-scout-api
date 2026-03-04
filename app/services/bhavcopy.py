@@ -30,7 +30,7 @@ def _bhavcopy_url_v2(d: date) -> str:
 
 
 async def fetch_bhavcopy(db: Client, target_date: date) -> dict:
-    run = db.table("fetch_runs").insert({
+    run = db.table("data_fetch_runs").insert({
         "run_date": str(target_date), "status": "started",
     }).execute()
     run_data = run.data[0] if run.data else {"id": "", "status": "started"}
@@ -43,7 +43,7 @@ async def fetch_bhavcopy(db: Client, target_date: date) -> dict:
         rows = await _download_and_parse(target_date)
         inserted, skipped = _upsert_bars(db, rows, target_date)
 
-        updated = db.table("fetch_runs").update({
+        updated = db.table("data_fetch_runs").update({
             "status": "completed",
             "total_symbols": len(rows),
             "inserted_count": inserted,
@@ -61,7 +61,7 @@ async def fetch_bhavcopy(db: Client, target_date: date) -> dict:
         return result
 
     except Exception as e:
-        db.table("fetch_runs").update({
+        db.table("data_fetch_runs").update({
             "status": "failed",
             "error_message": str(e)[:2000],
             "completed_at": datetime.now(timezone.utc).isoformat(),

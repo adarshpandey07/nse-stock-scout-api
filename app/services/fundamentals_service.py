@@ -68,7 +68,7 @@ def get_fundamentals(db: Client, symbol: str) -> dict | None:
 
 async def refresh_all_fundamentals(db: Client, symbols: list[str] | None = None) -> int:
     if not symbols:
-        stocks = db.table("nse_instruments").select("symbol").eq("is_active", True).execute()
+        stocks = db.table("nse_stocks").select("symbol").eq("is_active", True).execute()
         symbols = [s["symbol"] for s in stocks.data]
 
     count = 0

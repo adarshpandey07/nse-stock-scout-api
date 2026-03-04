@@ -31,7 +31,7 @@ def score_article_sentiment(headline: str, summary: str) -> str:
 
 
 def update_article_sentiments(db: Client, symbol: str | None = None) -> int:
-    q = db.table("news_articles").select("*").eq("sentiment", "neutral")
+    q = db.table("stock_news").select("*").eq("sentiment", "neutral")
     if symbol:
         q = q.eq("symbol", symbol)
     articles = q.execute().data
@@ -39,7 +39,7 @@ def update_article_sentiments(db: Client, symbol: str | None = None) -> int:
     for article in articles:
         sentiment = score_article_sentiment(article["headline"], article.get("summary", ""))
         news_score = 8 if sentiment == "positive" else (2 if sentiment == "negative" else 5)
-        db.table("news_articles").update({
+        db.table("stock_news").update({
             "sentiment": sentiment,
             "news_score": news_score,
         }).eq("id", article["id"]).execute()
@@ -50,7 +50,7 @@ def update_article_sentiments(db: Client, symbol: str | None = None) -> int:
 def compute_pointer_score(db: Client, symbol: str) -> dict | None:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     articles = (
-        db.table("news_articles")
+        db.table("stock_news")
         .select("*")
         .eq("symbol", symbol)
         .gte("created_at", cutoff)

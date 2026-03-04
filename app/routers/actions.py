@@ -15,7 +15,7 @@ def list_actions(
     symbol: str = Query(None),
     limit: int = Query(50, le=200),
 ):
-    q = db.table("action_items").select("*").order("created_at", desc=True)
+    q = db.table("action_centre").select("*").order("created_at", desc=True)
     if status:
         q = q.eq("status", status)
     if action_type:
@@ -28,7 +28,7 @@ def list_actions(
 @router.get("/pending", response_model=list[ActionItemOut])
 def pending_actions(db: DB, _user: CurrentUser):
     return (
-        db.table("action_items")
+        db.table("action_centre")
         .select("*")
         .eq("status", "pending")
         .order("created_at", desc=True)

@@ -63,13 +63,13 @@ def get_results_by_symbol(
 
 
 @router.get("/fetch-runs", response_model=list[FetchRunOut])
-def get_fetch_runs(
+def get_data_fetch_runs(
     db: DB,
     _user: CurrentUser,
     limit: int = Query(20, ge=1, le=100),
 ):
     return (
-        db.table("fetch_runs")
+        db.table("data_fetch_runs")
         .select("*")
         .order("started_at", desc=True)
         .limit(limit)

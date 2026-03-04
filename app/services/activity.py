@@ -25,5 +25,5 @@ def log_activity(
     if actor_user_id:
         row["actor_user_id"] = str(actor_user_id)
 
-    result = db.table("activity_logs").insert(row).execute()
+    result = db.table("activity_log").insert(row).execute()
     return result.data[0] if result.data else row

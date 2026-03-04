@@ -29,7 +29,7 @@ def list_articles(
     date_to: date = Query(None),
     limit: int = Query(50, le=200),
 ):
-    q = db.table("news_articles").select("*").order("published_at", desc=True)
+    q = db.table("stock_news").select("*").order("published_at", desc=True)
     if symbol:
         q = q.eq("symbol", symbol.upper())
     if date_from:

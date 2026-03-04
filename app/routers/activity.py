@@ -14,7 +14,7 @@ def get_activity(
     entity_type: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
 ):
-    q = db.table("activity_logs").select("*")
+    q = db.table("activity_log").select("*")
     if event_type:
         q = q.eq("event_type", event_type)
     if entity_type:

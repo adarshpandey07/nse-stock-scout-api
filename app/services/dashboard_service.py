@@ -11,11 +11,11 @@ def get_dashboard_summary(db: Client, user_pin: str) -> dict:
     total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
 
     # Wallet
-    wallet_res = db.table("wallet_transactions").select("balance").eq("user_pin", user_pin).order("created_at", desc=True).limit(1).execute()
+    wallet_res = db.table("user_wallets").select("balance").eq("user_pin", user_pin).order("created_at", desc=True).limit(1).execute()
     wallet_balance = float(wallet_res.data[0]["balance"]) if wallet_res.data else 0
 
     # Pending actions
-    actions_res = db.table("action_items").select("id", count="exact").eq("status", "pending").execute()
+    actions_res = db.table("action_centre").select("id", count="exact").eq("status", "pending").execute()
     pending_actions = actions_res.count or 0
 
     # Watchlist count
@@ -29,7 +29,7 @@ def get_dashboard_summary(db: Client, user_pin: str) -> dict:
     latest_scans = scan_res.count or 0
 
     # News ticker (last 5)
-    news_res = db.table("news_articles").select("headline,symbol,sentiment").order("published_at", desc=True).limit(5).execute()
+    news_res = db.table("stock_news").select("headline,symbol,sentiment").order("published_at", desc=True).limit(5).execute()
     news_ticker = [{"headline": n["headline"], "symbol": n.get("symbol"), "sentiment": n.get("sentiment")} for n in news_res.data]
 
     # F-scanner summary

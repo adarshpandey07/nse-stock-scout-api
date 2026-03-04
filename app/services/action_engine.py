@@ -19,16 +19,16 @@ def create_action(db: Client, action_type: str, symbol: str, message: str,
         "priority": priority,
         "metadata": metadata or {},
     }
-    result = db.table("action_items").insert(row).execute()
+    result = db.table("action_centre").insert(row).execute()
     return result.data[0] if result.data else row
 
 
 def decide_action(db: Client, action_id: str, decision: str, decided_by: str) -> dict:
-    result = db.table("action_items").select("*").eq("id", action_id).limit(1).execute()
+    result = db.table("action_centre").select("*").eq("id", action_id).limit(1).execute()
     if not result.data:
         raise ValueError("Action not found")
 
-    updated = db.table("action_items").update({
+    updated = db.table("action_centre").update({
         "status": decision,
         "decided_by": decided_by,
         "decided_at": datetime.now(timezone.utc).isoformat(),
@@ -52,7 +52,7 @@ def generate_actions_from_scan(db: Client) -> int:
     count = 0
     for stock in f_stocks:
         existing = (
-            db.table("action_items")
+            db.table("action_centre")
             .select("id")
             .eq("symbol", stock["symbol"])
             .eq("action_type", "f_pass")
@@ -76,7 +76,7 @@ def generate_actions_from_scan(db: Client) -> int:
     high_news = db.table("news_pointer_scores").select("symbol,pointer_score,article_count").gt("pointer_score", 8).execute().data
     for ns in high_news:
         existing = (
-            db.table("action_items")
+            db.table("action_centre")
             .select("id")
             .eq("symbol", ns["symbol"])
             .eq("action_type", "news_alert")
@@ -95,7 +95,7 @@ def generate_actions_from_scan(db: Client) -> int:
         )
         count += 1
 
-    log_activity(db, event_type="actions_generated", entity_type="action_items",
+    log_activity(db, event_type="actions_generated", entity_type="action_centre",
                  entity_id="auto", message=f"Generated {count} new action items",
                  status="completed", metadata_json={"count": count})
     return count

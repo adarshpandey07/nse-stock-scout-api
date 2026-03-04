@@ -8,7 +8,7 @@ from app.services.activity import log_activity
 
 
 def get_wallet(db: Client, user_pin: str) -> dict:
-    result = db.table("wallet_transactions").select("*").eq("user_pin", user_pin).limit(1).execute()
+    result = db.table("user_wallets").select("*").eq("user_pin", user_pin).limit(1).execute()
     if not result.data:
         raise ValueError(f"No wallet for user_pin={user_pin}")
     return result.data[0]
@@ -19,13 +19,13 @@ def deposit(db: Client, user_pin: str, amount: Decimal, notes: str = "") -> dict
     new_balance = float(wallet["balance"]) + float(amount)
     new_deposited = float(wallet.get("total_deposited", 0)) + float(amount)
 
-    db.table("wallet_transactions").update({
+    db.table("user_wallets").update({
         "balance": new_balance,
         "total_deposited": new_deposited,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", wallet["id"]).execute()
 
-    txn = db.table("wallet_transactions").insert({
+    txn = db.table("user_wallets").insert({
         "user_pin": user_pin,
         "txn_type": "deposit",
         "amount": float(amount),
@@ -49,13 +49,13 @@ def withdraw(db: Client, user_pin: str, amount: Decimal, notes: str = "") -> dic
     new_balance = balance - float(amount)
     new_withdrawn = float(wallet.get("total_withdrawn", 0)) + float(amount)
 
-    db.table("wallet_transactions").update({
+    db.table("user_wallets").update({
         "balance": new_balance,
         "total_withdrawn": new_withdrawn,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", wallet["id"]).execute()
 
-    txn = db.table("wallet_transactions").insert({
+    txn = db.table("user_wallets").insert({
         "user_pin": user_pin,
         "txn_type": "withdraw",
         "amount": float(amount),
@@ -72,7 +72,7 @@ def withdraw(db: Client, user_pin: str, amount: Decimal, notes: str = "") -> dic
 
 def get_transactions(db: Client, user_pin: str, limit: int = 50) -> list[dict]:
     result = (
-        db.table("wallet_transactions")
+        db.table("user_wallets")
         .select("*")
         .eq("user_pin", user_pin)
         .order("created_at", desc=True)

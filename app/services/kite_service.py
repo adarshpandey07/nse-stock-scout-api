@@ -127,7 +127,7 @@ def place_order(db: Client, user_pin: str, symbol: str, exchange: str,
     order_id = kite.place_order(**order_params)
 
     side = "buy" if transaction_type == "BUY" else "sell"
-    db.table("trades").insert({
+    db.table("user_trades").insert({
         "user_pin": user_pin,
         "symbol": symbol,
         "side": side,

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def refresh_instruments_from_kite(db: Client, api_key: str, access_token: str) -> int:
-    """Fetch full instrument list from Kite and upsert into nse_instruments."""
+    """Fetch full instrument list from Kite and upsert into nse_stocks."""
     kite = KiteConnect(api_key=api_key)
     kite.set_access_token(access_token)
 
@@ -22,15 +22,15 @@ def refresh_instruments_from_kite(db: Client, api_key: str, access_token: str) -
             continue
 
         symbol = inst["tradingsymbol"]
-        existing = db.table("nse_instruments").select("id").eq("symbol", symbol).limit(1).execute()
+        existing = db.table("nse_stocks").select("id").eq("symbol", symbol).limit(1).execute()
 
         if existing.data:
-            db.table("nse_instruments").update({
+            db.table("nse_stocks").update({
                 "name": inst.get("name", ""),
                 "isin": inst.get("isin", "") or "",
             }).eq("symbol", symbol).execute()
         else:
-            db.table("nse_instruments").insert({
+            db.table("nse_stocks").insert({
                 "symbol": symbol,
                 "name": inst.get("name", ""),
                 "isin": inst.get("isin", "") or "",
@@ -39,7 +39,7 @@ def refresh_instruments_from_kite(db: Client, api_key: str, access_token: str) -
             }).execute()
             count += 1
 
-    log_activity(db, event_type="instruments_refreshed", entity_type="nse_instruments",
+    log_activity(db, event_type="instruments_refreshed", entity_type="nse_stocks",
                  entity_id="all", message=f"Refreshed instruments: {count} new",
                  status="completed", metadata_json={"new_count": count, "total_fetched": len(instruments)})
     return count
@@ -47,7 +47,7 @@ def refresh_instruments_from_kite(db: Client, api_key: str, access_token: str) -
 
 def get_all_stocks(db: Client, search: str = "", sector: str = "",
                    limit: int = 100, offset: int = 0) -> list[dict]:
-    q = db.table("nse_instruments").select("*").eq("is_active", True)
+    q = db.table("nse_stocks").select("*").eq("is_active", True)
     if search:
         q = q.or_(f"symbol.ilike.%{search}%,name.ilike.%{search}%")
     if sector:
@@ -57,5 +57,5 @@ def get_all_stocks(db: Client, search: str = "", sector: str = "",
 
 
 def get_stock_by_symbol(db: Client, symbol: str) -> dict | None:
-    result = db.table("nse_instruments").select("*").eq("symbol", symbol.upper()).limit(1).execute()
+    result = db.table("nse_stocks").select("*").eq("symbol", symbol.upper()).limit(1).execute()
     return result.data[0] if result.data else None

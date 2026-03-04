@@ -61,7 +61,7 @@ def portfolio_breakdown(db: Client, user_pin: str) -> dict:
         total_invested += invested
         total_current += current
 
-        stock = db.table("nse_instruments").select("sector").eq("symbol", h["symbol"]).limit(1).execute()
+        stock = db.table("nse_stocks").select("sector").eq("symbol", h["symbol"]).limit(1).execute()
         sector = stock.data[0].get("sector", "Unknown") if stock.data else "Unknown"
 
         sector_map[sector] = sector_map.get(sector, 0) + current
@@ -79,7 +79,7 @@ def portfolio_breakdown(db: Client, user_pin: str) -> dict:
 
 
 def pnl_report(db: Client, user_pin: str, period: str = "daily") -> dict:
-    trades = db.table("trades").select("*").eq("user_pin", user_pin).eq("status", "executed").order("executed_at").execute().data
+    trades = db.table("user_trades").select("*").eq("user_pin", user_pin).eq("status", "executed").order("executed_at").execute().data
 
     if not trades:
         return {"period": period, "total_pnl": 0, "total_trades": 0, "winning_trades": 0,
@@ -115,7 +115,7 @@ def pnl_report(db: Client, user_pin: str, period: str = "daily") -> dict:
 
 
 def brokerage_report(db: Client, user_pin: str) -> dict:
-    trades = db.table("trades").select("*").eq("user_pin", user_pin).execute().data
+    trades = db.table("user_trades").select("*").eq("user_pin", user_pin).execute().data
 
     total_brokerage = sum(float(t.get("brokerage") or 0) for t in trades)
     total_stt = sum(float(t.get("stt") or 0) for t in trades)
@@ -137,7 +137,7 @@ def brokerage_report(db: Client, user_pin: str) -> dict:
 
 
 def cashflow_report(db: Client, user_pin: str) -> dict:
-    wallet = db.table("wallet_transactions").select("*").eq("user_pin", user_pin).limit(1).execute()
+    wallet = db.table("user_wallets").select("*").eq("user_pin", user_pin).limit(1).execute()
     w = wallet.data[0] if wallet.data else {}
     total_deposited = float(w.get("total_deposited", 0))
     total_withdrawn = float(w.get("total_withdrawn", 0))
@@ -145,7 +145,7 @@ def cashflow_report(db: Client, user_pin: str) -> dict:
     pnl = pnl_report(db, user_pin)
     net_pnl = pnl["total_pnl"]
 
-    txns = db.table("wallet_transactions").select("*").eq("user_pin", user_pin).order("created_at").execute().data
+    txns = db.table("user_wallets").select("*").eq("user_pin", user_pin).order("created_at").execute().data
 
     monthly = {}
     for t in txns:
