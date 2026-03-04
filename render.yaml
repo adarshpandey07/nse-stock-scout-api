@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: nse-stock-scout
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: VITE_SUPABASE_URL
+        value: "https://kuqusavgjwortbnioghd.supabase.co"
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt1cXVzYXZnandvcnRibmlvZ2hkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3NDY1ODAsImV4cCI6MjA4NzMyMjU4MH0.nmkG9ftXsHNNx68QraIN8YniTDGtew5EUORsWACKyr8"
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: KITE_API_KEY
+        sync: false
+      - key: KITE_API_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
