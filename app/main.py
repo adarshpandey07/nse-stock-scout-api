@@ -6,8 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import (
     actions, activity, admin, analysis, astro, auth, backtest, chat, config,
-    dashboard, fundamental_scanner, health, jobs, kite, news, results, sop,
-    stocks, superstar, telegram, trades, wallet, watchlist_v2,
+    dashboard, fundamental_scanner, health, jobs, kite, news, polymarket,
+    results, sop, stocks, superstar, telegram, trades, wallet, watchlist_v2,
 )
 
 
@@ -76,3 +76,6 @@ app.include_router(astro.router)
 
 # ── Phase 10: Telegram ──
 app.include_router(telegram.router)
+
+# ── Phase 11: Polymarket Trading ──
+app.include_router(polymarket.router)

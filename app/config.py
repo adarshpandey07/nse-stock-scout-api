@@ -32,6 +32,18 @@ class Settings(BaseSettings):
     # Telegram alerts
     telegram_bot_token: str = ""
 
+    # Polymarket
+    polymarket_private_key: str = ""
+    polymarket_wallet_address: str = ""
+    polymarket_chain_id: int = 137
+    polymarket_clob_url: str = "https://clob.polymarket.com"
+    polymarket_gamma_url: str = "https://gamma-api.polymarket.com"
+    polymarket_paper_mode: bool = True
+
+    # Anthropic (Claude AI for Polymarket analysis)
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-opus-4-20250514"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
