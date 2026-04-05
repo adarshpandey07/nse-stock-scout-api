@@ -17,13 +17,18 @@ def log_activity(
     row = {
         "event_type": event_type,
         "message": message,
-        "entity_type": entity_type,
-        "entity_id": entity_id,
-        "metadata_json": metadata_json,
         "status": status,
     }
+    if entity_type:
+        row["entity_type"] = entity_type
+    if metadata_json:
+        row["metadata_json"] = metadata_json
     if actor_user_id:
         row["actor_user_id"] = str(actor_user_id)
 
-    result = db.table("activity_log").insert(row).execute()
-    return result.data[0] if result.data else row
+    try:
+        result = db.table("activity_log").insert(row).execute()
+        return result.data[0] if result.data else row
+    except Exception:
+        # Activity logging should never break the main operation
+        return row

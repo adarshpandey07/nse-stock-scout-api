@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-opus-4-20250514"
 
+    # Free cron secret (for external cron services like cron-job.org)
+    cron_secret_key: str = "nss-cron-2026-secret"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

@@ -40,8 +40,10 @@ async def fetch_bhavcopy(db: Client, target_date: date) -> dict:
                  message=f"Bhavcopy fetch started for {target_date}", status="started")
 
     try:
-        rows = await _download_and_parse(target_date)
+        rows, stock_meta = await _download_and_parse(target_date)
+        _sync_nse_stocks(db, stock_meta)
         inserted, skipped = _upsert_bars(db, rows, target_date)
+        _update_fundamentals_prices(db, rows)
 
         updated = db.table("data_fetch_runs").update({
             "status": "completed",
@@ -80,10 +82,15 @@ async def _download_and_parse(target_date: date) -> list[dict]:
     url_v2 = _bhavcopy_url_v2(target_date)
 
     async with httpx.AsyncClient(headers=NSE_HEADERS, follow_redirects=True, timeout=30) as client:
-        await client.get("https://www.nseindia.com/")
-        resp = await client.get(url)
+        # Try v2 URL first (doesn't need cookies, more reliable)
+        resp = await client.get(url_v2)
         if resp.status_code != 200:
-            resp = await client.get(url_v2)
+            # Fallback to v1 URL (needs NSE homepage cookies)
+            try:
+                await client.get("https://www.nseindia.com/")
+            except Exception:
+                pass
+            resp = await client.get(url)
         resp.raise_for_status()
 
     zf = zipfile.ZipFile(io.BytesIO(resp.content))
@@ -91,15 +98,19 @@ async def _download_and_parse(target_date: date) -> list[dict]:
     csv_content = zf.read(csv_name).decode("utf-8")
 
     rows = []
+    stock_meta = []  # (symbol, name, isin) for nse_stocks sync
     reader = csv.DictReader(io.StringIO(csv_content))
     for row in reader:
         row = {k.strip(): v.strip() if v else v for k, v in row.items()}
-        series = row.get("SERIES", row.get("SCtySrs", ""))
+        series = row.get("SERIES", row.get("SctySrs", row.get("SCtySrs", "")))
         if series != "EQ":
             continue
         symbol = row.get("SYMBOL", row.get("TckrSymb", ""))
         if not symbol:
             continue
+        name = row.get("NAME", row.get("FinInstrmNm", ""))
+        isin = row.get("ISIN", row.get("ISIN", ""))
+        stock_meta.append((symbol, name, isin))
         try:
             rows.append({
                 "symbol": symbol,
@@ -112,7 +123,58 @@ async def _download_and_parse(target_date: date) -> list[dict]:
             })
         except (ValueError, TypeError):
             continue
-    return rows
+    return rows, stock_meta
+
+
+def _sync_nse_stocks(db: Client, stock_meta: list[tuple]) -> int:
+    """Ensure all symbols from bhavcopy exist in nse_stocks table."""
+    if not stock_meta:
+        return 0
+
+    # Get existing symbols in one query
+    existing = db.table("nse_stocks").select("symbol").execute()
+    existing_symbols = {r["symbol"] for r in existing.data}
+
+    new_stocks = []
+    for symbol, name, isin in stock_meta:
+        if symbol not in existing_symbols:
+            new_stocks.append({
+                "symbol": symbol,
+                "name": name or symbol,
+                "isin": isin or "",
+                "series": "EQ",
+                "is_active": True,
+            })
+
+    if new_stocks:
+        for i in range(0, len(new_stocks), 100):
+            try:
+                db.table("nse_stocks").upsert(
+                    new_stocks[i:i + 100], on_conflict="symbol"
+                ).execute()
+            except Exception as e:
+                logger.warning(f"Failed to upsert nse_stocks batch: {e}")
+
+    if new_stocks:
+        logger.info(f"Added {len(new_stocks)} new stocks to nse_stocks")
+    return len(new_stocks)
+
+
+def _update_fundamentals_prices(db: Client, rows: list[dict]) -> int:
+    """Update current_price in stock_fundamentals from latest bhavcopy close prices."""
+    if not rows:
+        return 0
+    updates = [{"symbol": r["symbol"], "current_price": r["close"]} for r in rows]
+    count = 0
+    for i in range(0, len(updates), 100):
+        try:
+            db.table("stock_fundamentals").upsert(
+                updates[i:i + 100], on_conflict="symbol"
+            ).execute()
+            count += len(updates[i:i + 100])
+        except Exception as e:
+            logger.warning(f"Failed to update fundamentals prices batch: {e}")
+    return count
 
 
 def _upsert_bars(db: Client, rows: list[dict], target_date: date) -> tuple[int, int]:

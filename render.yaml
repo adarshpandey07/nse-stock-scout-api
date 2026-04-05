@@ -1,4 +1,6 @@
 services:
+  # Cron jobs handled for FREE via cron-job.org → GET /jobs/cron/daily?key=CRON_SECRET_KEY
+  # No paid Render cron services needed
   - type: web
     name: nse-stock-scout
     runtime: python
@@ -30,6 +32,8 @@ services:
       - key: POLYMARKET_PAPER_MODE
         value: "true"
       - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CRON_SECRET_KEY
         sync: false
   - type: worker
     name: nse-polymarket-cron
