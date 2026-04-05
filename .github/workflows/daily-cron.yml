@@ -1,0 +1,24 @@
+name: NSE Daily Data Sync
+
+on:
+  schedule:
+    # 4:30 PM IST = 11:00 UTC, Mon-Fri
+    - cron: '0 11 * * 1-5'
+  workflow_dispatch: # Allow manual trigger from GitHub Actions tab
+
+jobs:
+  daily-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger daily pipeline
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            "https://nse-stock-scout-api.onrender.com/jobs/cron/daily?key=${{ secrets.CRON_SECRET_KEY }}")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          echo "Status: $HTTP_CODE"
+          echo "Response: $BODY"
+          if [ "$HTTP_CODE" -ge 400 ]; then
+            echo "::error::Cron failed with status $HTTP_CODE"
+            exit 1
+          fi
