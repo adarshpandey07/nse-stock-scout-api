@@ -112,13 +112,20 @@ async def _download_and_parse(target_date: date) -> list[dict]:
         isin = row.get("ISIN", row.get("ISIN", ""))
         stock_meta.append((symbol, name, isin))
         try:
+            # Use LTP (Last Traded Price) as close — this matches what
+            # trading apps like Groww/Zerodha show. NSE "Close" is a
+            # weighted average of last 30 min, LTP is the actual last trade.
+            ltp = row.get("LAST", row.get("LastPric", 0))
+            nse_close = row.get("CLOSE", row.get("ClsPric", 0))
+            # Use LTP if available, fallback to NSE close
+            close_price = float(ltp) if float(ltp) > 0 else float(nse_close)
             rows.append({
                 "symbol": symbol,
                 "date": str(target_date),
                 "open": float(row.get("OPEN", row.get("OpnPric", 0))),
                 "high": float(row.get("HIGH", row.get("HghPric", 0))),
                 "low": float(row.get("LOW", row.get("LwPric", 0))),
-                "close": float(row.get("CLOSE", row.get("ClsPric", 0))),
+                "close": close_price,
                 "volume": int(row.get("TOTTRDQTY", row.get("TtlTradgVol", 0))),
             })
         except (ValueError, TypeError):
