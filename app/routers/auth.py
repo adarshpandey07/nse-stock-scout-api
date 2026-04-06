@@ -15,6 +15,31 @@ from app.services.auth_service import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# PIN → email mapping (frontend uses PIN-based auth)
+PIN_USERS = {
+    "882747": "aadarsh@nse.com",
+    "882748": "parth@nse.com",
+    "882749": "vardhaman@nse.com",
+}
+
+
+@router.post("/pin-login", response_model=TokenResponse)
+def pin_login(body: dict, db: DB):
+    pin = body.get("pin", "")
+    email = PIN_USERS.get(pin)
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid PIN")
+
+    result = db.table("profiles").select("*").eq("email", email).limit(1).execute()
+    if not result.data:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    user = result.data[0]
+    return TokenResponse(
+        access_token=create_access_token({"sub": str(user["id"])}),
+        refresh_token=create_refresh_token({"sub": str(user["id"])}),
+    )
+
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
 def register(body: RegisterRequest, db: DB):

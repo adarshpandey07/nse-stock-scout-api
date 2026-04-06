@@ -14,8 +14,10 @@ def get_criteria_groups(db: DB, _user: CurrentUser):
     criteria = db.table("f_criteria_config").select("*").order("criteria_group").order("sort_order").execute().data
     groups = {"F1": [], "F2": [], "F3": []}
     for c in criteria:
-        if c.get("criteria_group") in groups:
-            groups[c["criteria_group"]].append(c)
+        grp = c.get("criteria_group", "")
+        if grp not in groups:
+            groups[grp] = []
+        groups[grp].append(c)
     return groups
 
 

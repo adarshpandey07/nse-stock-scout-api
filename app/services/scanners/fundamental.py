@@ -13,6 +13,7 @@ from datetime import date, datetime, timezone
 from supabase import Client
 
 from app.services.activity import log_activity
+from app.utils import today_ist
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +51,23 @@ def _evaluate_group(fund: dict, criteria: list[dict]) -> tuple[bool, float]:
     return all_pass, round(score, 2)
 
 
+def _fetch_all_fundamentals(db: Client) -> list[dict]:
+    """Fetch all stock_fundamentals with pagination (Supabase default limit is 1000)."""
+    all_rows = []
+    page_size = 1000
+    offset = 0
+    while True:
+        batch = db.table("stock_fundamentals").select("*").range(offset, offset + page_size - 1).execute().data
+        all_rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+    return all_rows
+
+
 def run_f_scanner(db: Client, scan_date: date | None = None) -> dict:
     if scan_date is None:
-        scan_date = date.today()
+        scan_date = today_ist()
 
     all_criteria = db.table("f_criteria_config").select("*").eq("enabled", True).execute().data
     groups = {"F1": [], "F2": [], "F3": []}
@@ -67,10 +82,11 @@ def run_f_scanner(db: Client, scan_date: date | None = None) -> dict:
             for c in clist
         ]
 
-    all_fundamentals = db.table("stock_fundamentals").select("*").execute().data
+    all_fundamentals = _fetch_all_fundamentals(db)
 
     f1_pass_count = f2_pass_count = f3_pass_count = all_pass_count = 0
     results = []
+    update_batch = []
 
     for fund in all_fundamentals:
         f1_ok, f1_score = _evaluate_group(fund, groups["F1"])
@@ -85,13 +101,15 @@ def run_f_scanner(db: Client, scan_date: date | None = None) -> dict:
             f3_pass_count += 1
 
         overall_score = round((f1_score + f2_score + f3_score) / 3, 2)
+        now_ts = datetime.now(timezone.utc).isoformat()
 
-        db.table("stock_fundamentals").update({
+        update_batch.append({
+            "symbol": fund["symbol"],
             "f1_status": f1_ok, "f2_status": f2_ok, "f3_status": f3_ok,
             "f1_score": f1_score, "f2_score": f2_score, "f3_score": f3_score,
             "overall_score": overall_score,
-            "last_calculated_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("symbol", fund["symbol"]).execute()
+            "last_calculated_at": now_ts,
+        })
 
         if f1_ok and f2_ok and f3_ok:
             all_pass_count += 1
@@ -101,6 +119,15 @@ def run_f_scanner(db: Client, scan_date: date | None = None) -> dict:
                 "pe": fund.get("pe"), "roe": fund.get("roe"),
                 "current_price": fund.get("current_price", 0),
             })
+
+    # Batch upsert scores (100 rows at a time instead of 2449 individual updates)
+    for i in range(0, len(update_batch), 100):
+        try:
+            db.table("stock_fundamentals").upsert(
+                update_batch[i:i + 100], on_conflict="symbol"
+            ).execute()
+        except Exception as e:
+            logger.warning(f"Failed to upsert f-scanner batch: {e}")
 
     run_row = {
         "run_date": str(scan_date),
