@@ -43,10 +43,10 @@ def run_vcp_scanner(db: Client, scan_date: date) -> int:
     total = len(bars_by_symbol)
 
     for symbol, bars in bars_by_symbol.items():
-        closes = [float(b["close"]) for b in bars]
-        highs = [float(b["high"]) for b in bars]
-        lows = [float(b["low"]) for b in bars]
-        volumes = [int(b["volume"]) for b in bars]
+        closes = [float(b["c"]) for b in bars]
+        highs = [float(b["h"]) for b in bars]
+        lows = [float(b["l"]) for b in bars]
+        volumes = [int(b["v"]) for b in bars]
 
         close = closes[0]
         vol = volumes[0]

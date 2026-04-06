@@ -53,17 +53,15 @@ def fetch_all_bars(db: Client, scan_date: date) -> dict[str, list[dict]]:
 
     Uses a single exec_sql RPC call with json_agg to fetch everything server-side,
     instead of 60+ paginated PostgREST calls.
+    Uses short keys (o/h/l/c/v) to minimize payload (~4MB vs ~7.6MB).
     """
     import json as _json
 
     query = (
         f"SELECT symbol, "
         f"json_agg("
-        f"  json_build_object("
-        f"    'symbol', symbol, 'date', date::text,"
-        f"    'open', open, 'high', high, 'low', low,"
-        f"    'close', close, 'volume', volume"
-        f"  ) ORDER BY date DESC"
+        f"  json_build_object('o',open,'h',high,'l',low,'c',close,'v',volume)"
+        f"  ORDER BY date DESC"
         f") AS bars "
         f"FROM daily_bars "
         f"WHERE date <= '{scan_date}' "

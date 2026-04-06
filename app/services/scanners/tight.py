@@ -54,10 +54,10 @@ def run_tight_scanner(db: Client, scan_date: date) -> int:
         if len(bars) < lookback:
             continue
 
-        closes = [float(b["close"]) for b in bars]
-        highs = [float(b["high"]) for b in bars]
-        lows = [float(b["low"]) for b in bars]
-        volumes = [int(b["volume"]) for b in bars]
+        closes = [float(b["c"]) for b in bars]
+        highs = [float(b["h"]) for b in bars]
+        lows = [float(b["l"]) for b in bars]
+        volumes = [int(b["v"]) for b in bars]
 
         current_close = closes[0]
         avg_vol_20 = sum(volumes[:20]) / min(20, len(volumes))

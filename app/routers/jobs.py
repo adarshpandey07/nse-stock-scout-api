@@ -33,22 +33,30 @@ async def trigger_fetch(
 async def trigger_scan(
     db: DB,
     _user: AdminUser,
+    background_tasks: BackgroundTasks,
     scanner: int = Query(1, ge=1, le=3),
     scan_date: date = Query(default=None),
 ):
-    """Run a scanner on existing data."""
+    """Run a scanner in background — returns immediately."""
     if scan_date is None:
         scan_date = last_trading_day()
 
-    if scanner == 1:
-        count = run_vcp_scanner(db, scan_date)
-        return {"scanner": "VCP Daily", "scan_date": str(scan_date), "results": count}
-    elif scanner == 2:
-        count = run_tight_scanner(db, scan_date)
-        return {"scanner": "Tight Consolidation", "scan_date": str(scan_date), "results": count}
-    else:
-        count = run_ipo_scanner(db, scan_date)
-        return {"scanner": "IPO Base", "scan_date": str(scan_date), "results": count}
+    scanner_names = {1: "VCP Daily", 2: "Tight Consolidation", 3: "IPO Base"}
+    scanner_fns = {1: run_vcp_scanner, 2: run_tight_scanner, 3: run_ipo_scanner}
+
+    def _run():
+        try:
+            count = scanner_fns[scanner](db, scan_date)
+            logger.info(f"Background scan {scanner} completed: {count} results")
+        except Exception as e:
+            logger.error(f"Background scan {scanner} failed: {e}")
+
+    background_tasks.add_task(_run)
+    return {
+        "status": "started",
+        "scanner": scanner_names[scanner],
+        "scan_date": str(scan_date),
+    }
 
 
 @router.post("/run-all")
