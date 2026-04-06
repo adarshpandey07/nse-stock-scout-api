@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     vite_supabase_publishable_key: str = ""
     supabase_service_role_key: str = ""
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    access_token_expire_minutes: int = 10080  # 7 days
     refresh_token_expire_days: int = 7
     admin_email: str = "admin@example.com"
     admin_password: str = "changeme123"
