@@ -41,14 +41,15 @@ def _evaluate_condition(fund: dict, field: str, operator: str, value: float) -> 
 
 def _evaluate_group(fund: dict, criteria: list[dict]) -> tuple[bool, float]:
     if not criteria:
-        return True, 100.0
+        return False, 0.0
     passed = 0
     for c in criteria:
         if _evaluate_condition(fund, c["field_name"], c["operator"], float(c["value"])):
             passed += 1
-    all_pass = passed == len(criteria)
+    # OR logic: at least one condition passes = group passes
+    any_pass = passed > 0
     score = (passed / len(criteria)) * 100
-    return all_pass, round(score, 2)
+    return any_pass, round(score, 2)
 
 
 def _fetch_all_fundamentals(db: Client) -> list[dict]:

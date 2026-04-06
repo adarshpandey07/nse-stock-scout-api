@@ -1,11 +1,18 @@
 """
 VCP Daily Scanner (Scanner ID = 1)
 
-Volatility Contraction Pattern: looks for stocks where:
-1. Price is above rising 50-SMA (trend)
-2. ATR is contracting over recent bars
-3. Recent daily ranges are tightening
-4. Volume is drying up
+Volatility Contraction Pattern — ALL conditions must pass:
+ 1. Close > 20
+ 2. Close > EMA(Close, 50)
+ 3. EMA(Close, 50) > EMA(Close, 150)
+ 4. EMA(Close, 150) > EMA(Close, 200)
+ 5. Close > Max(20d High) × 0.95
+ 6. Max(20d High) − Min(20d Low) < Max(60d High) − Min(60d Low)
+ 7. Max(10d High) − Min(10d Low) < Max(20d High) − Min(20d Low)
+ 8. SMA(Volume, 10) < SMA(Volume, 50)
+ 9. Close × Volume > 1,000,000
+10. ATR(14) / Close < 0.06
+11. EMA(Close, 200) > EMA(Close, 200) from 20 days ago
 """
 
 import logging
@@ -14,7 +21,9 @@ from datetime import date
 from supabase import Client
 
 from app.services.activity import log_activity
-from app.services.config_service import get_active_config
+from app.services.scanners.indicators import (
+    atr, ema, sma, fetch_all_bars, fetch_name_map,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,127 +31,112 @@ SCANNER_ID = 1
 
 
 def run_vcp_scanner(db: Client, scan_date: date) -> int:
-    config = get_active_config(db).get("config_data", {})
-    scanner_cfg = config.get("scanner_1", {})
-    if not scanner_cfg.get("enabled", True):
-        return 0
+    bars_by_symbol = fetch_all_bars(db, scan_date)
+    name_map = fetch_name_map(db)
 
-    weights = scanner_cfg.get("weights", {})
-    w_sma = weights.get("sma_trend", 25)
-    w_atr = weights.get("atr_contraction", 25)
-    w_tight = weights.get("tightness", 25)
-    w_vol = weights.get("volume_dry", 25)
-    min_score = scanner_cfg.get("min_score", 60)
-    total_weight = w_sma + w_atr + w_tight + w_vol
-
-    fetch_cfg = config.get("fetch", {})
-    min_close = fetch_cfg.get("min_close_price", 20)
-    min_vol = fetch_cfg.get("min_avg_volume", 50000)
-
-    # Get symbols with 50+ bars
-    sym_result = db.rpc("exec_sql", {
-        "query": f"SELECT symbol FROM daily_bars WHERE date <= '{scan_date}' GROUP BY symbol HAVING COUNT(*) >= 50"
-    }).execute()
-    symbols = [r["symbol"] for r in (sym_result.data or [])]
-
-    # Delete existing results for this date + scanner
-    db.table("scan_results").delete().eq("scan_date", str(scan_date)).eq("scanner_type", SCANNER_ID).execute()
+    # Clear previous results for this scanner + date
+    db.table("scan_results").delete() \
+        .eq("scan_date", str(scan_date)) \
+        .eq("scanner_type", SCANNER_ID).execute()
 
     results = []
-    for symbol in symbols:
-        bars_result = db.rpc("exec_sql", {
-            "query": f"SELECT date, open, high, low, close, volume FROM daily_bars WHERE symbol = '{symbol}' AND date <= '{scan_date}' ORDER BY date DESC LIMIT 60"
-        }).execute()
-        bars = bars_result.data or []
+    total = len(bars_by_symbol)
 
-        if len(bars) < 50:
-            continue
-
+    for symbol, bars in bars_by_symbol.items():
         closes = [float(b["close"]) for b in bars]
         highs = [float(b["high"]) for b in bars]
         lows = [float(b["low"]) for b in bars]
         volumes = [int(b["volume"]) for b in bars]
 
-        current_close = closes[0]
-        avg_vol_20 = sum(volumes[:20]) / 20
+        close = closes[0]
+        vol = volumes[0]
 
-        if current_close < min_close or avg_vol_20 < min_vol:
+        # 1. Close > 20
+        if close <= 20:
             continue
 
-        # 1. SMA Trend
-        sma_50 = sum(closes[:50]) / 50
-        sma_50_prev = sum(closes[1:51]) / 50 if len(closes) > 50 else sma_50
-        sma_score = 0
-        if current_close > sma_50:
-            sma_score = 50
-            if sma_50 > sma_50_prev:
-                sma_score = 100
+        # 2. Close > EMA(Close, 50)
+        ema50 = ema(closes, 50)
+        if ema50 is None or close <= ema50:
+            continue
 
-        # 2. ATR Contraction
-        def calc_atr(h, l, c, period):
-            trs = []
-            for i in range(period):
-                tr = max(h[i] - l[i], abs(h[i] - c[i + 1]) if i + 1 < len(c) else h[i] - l[i], abs(l[i] - c[i + 1]) if i + 1 < len(c) else h[i] - l[i])
-                trs.append(tr)
-            return sum(trs) / len(trs) if trs else 0
+        # 3. EMA(50) > EMA(150)
+        ema150 = ema(closes, 150)
+        if ema150 is None or ema50 <= ema150:
+            continue
 
-        atr_recent = calc_atr(highs[:10], lows[:10], closes, 10)
-        atr_prior = calc_atr(highs[10:20], lows[10:20], closes[10:], 10)
-        atr_score = 0
-        if atr_prior > 0:
-            cr = atr_recent / atr_prior
-            if cr < 0.5: atr_score = 100
-            elif cr < 0.7: atr_score = 75
-            elif cr < 0.9: atr_score = 50
-            elif cr < 1.0: atr_score = 25
+        # 4. EMA(150) > EMA(200)
+        ema200 = ema(closes, 200)
+        if ema200 is None or ema150 <= ema200:
+            continue
 
-        # 3. Tightness
-        high_10 = max(highs[:10])
-        low_10 = min(lows[:10])
-        range_pct = ((high_10 - low_10) / current_close) * 100 if current_close > 0 else 999
-        tight_score = 0
-        if range_pct < 5: tight_score = 100
-        elif range_pct < 8: tight_score = 75
-        elif range_pct < 12: tight_score = 50
-        elif range_pct < 15: tight_score = 25
+        # 5. Close > Max(20d High) × 0.95
+        if len(highs) < 20:
+            continue
+        max20h = max(highs[:20])
+        if close <= max20h * 0.95:
+            continue
 
-        # 4. Volume Drying
-        vol_recent = sum(volumes[:10]) / 10
-        vol_prior = sum(volumes[10:30]) / 20 if len(volumes) >= 30 else sum(volumes[10:]) / max(len(volumes) - 10, 1)
-        vol_score = 0
-        if vol_prior > 0:
-            vr = vol_recent / vol_prior
-            if vr < 0.4: vol_score = 100
-            elif vr < 0.6: vol_score = 75
-            elif vr < 0.8: vol_score = 50
-            elif vr < 1.0: vol_score = 25
+        # 6. 20d range < 60d range
+        if len(highs) < 60:
+            continue
+        r20 = max(highs[:20]) - min(lows[:20])
+        r60 = max(highs[:60]) - min(lows[:60])
+        if r20 >= r60:
+            continue
 
-        raw_score = sma_score * w_sma + atr_score * w_atr + tight_score * w_tight + vol_score * w_vol
-        final_score = round(raw_score / total_weight, 2) if total_weight > 0 else 0
+        # 7. 10d range < 20d range
+        r10 = max(highs[:10]) - min(lows[:10])
+        if r10 >= r20:
+            continue
 
-        if final_score >= min_score:
-            vol_ratio = round(vol_recent / vol_prior, 4) if vol_prior > 0 else 0
-            # Look up company name from nse_stocks
-            stock_info = db.table("nse_stocks").select("name").eq("symbol", symbol).limit(1).execute()
-            company_name = stock_info.data[0]["name"] if stock_info.data else symbol
+        # 8. SMA(Volume, 10) < SMA(Volume, 50)
+        sv10 = sma(volumes, 10)
+        sv50 = sma(volumes, 50)
+        if sv10 is None or sv50 is None or sv10 >= sv50:
+            continue
 
-            results.append({
-                "scan_date": str(scan_date), "symbol": symbol,
-                "scanner_type": SCANNER_ID, "score": int(round(final_score)),
-                "close_price": round(current_close, 2),
-                "range_pct": round(range_pct, 2),
-                "volume_dry_ratio": vol_ratio,
-                "scanner_tag": "vcp",
-                "company_name": company_name,
-            })
+        # 9. Turnover > ₹10 lakh
+        if close * vol <= 1_000_000:
+            continue
 
-    if results:
-        # Insert in batches
-        for i in range(0, len(results), 100):
-            db.table("scan_results").insert(results[i:i+100]).execute()
+        # 10. ATR(14) / Close < 0.06
+        atr14 = atr(highs, lows, closes)
+        if atr14 is None or atr14 / close >= 0.06:
+            continue
 
-    log_activity(db, event_type="scan_completed", entity_type="scanner",
-                 entity_id=str(SCANNER_ID),
-                 message=f"VCP scanner completed for {scan_date}: {len(results)} stocks passed",
-                 status="completed", metadata_json={"count": len(results), "total_symbols": len(symbols)})
+        # 11. EMA(200) rising vs 20 days ago
+        if len(closes) < 220:
+            continue
+        ema200_ago = ema(closes[20:], 200)
+        if ema200_ago is None or ema200 <= ema200_ago:
+            continue
+
+        # ── All 11 conditions passed ──
+        range_pct = round((r10 / close) * 100, 2) if close > 0 else 0
+        vol_ratio = round(sv10 / sv50, 4) if sv50 > 0 else 0
+
+        results.append({
+            "scan_date": str(scan_date),
+            "symbol": symbol,
+            "scanner_type": SCANNER_ID,
+            "score": 100,
+            "close_price": round(close, 2),
+            "range_pct": range_pct,
+            "volume_dry_ratio": vol_ratio,
+            "scanner_tag": "vcp",
+            "company_name": name_map.get(symbol, symbol),
+        })
+
+    # Insert in batches
+    for i in range(0, len(results), 100):
+        db.table("scan_results").insert(results[i:i + 100]).execute()
+
+    log_activity(
+        db, event_type="scan_completed", entity_type="scanner",
+        entity_id=str(SCANNER_ID),
+        message=f"VCP scanner: {len(results)}/{total} passed all 11 conditions on {scan_date}",
+        status="completed",
+        metadata_json={"count": len(results), "total_symbols": total},
+    )
     return len(results)

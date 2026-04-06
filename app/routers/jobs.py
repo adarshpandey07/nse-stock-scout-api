@@ -8,7 +8,7 @@ from app.dependencies import AdminUser, DB
 from app.database import get_db
 from app.schemas.results import FetchRunOut
 from app.services.bhavcopy import fetch_bhavcopy, rebuild_history
-from app.services.scanners import run_tight_scanner, run_vcp_scanner
+from app.services.scanners import run_tight_scanner, run_vcp_scanner, run_ipo_scanner
 from app.utils import last_trading_day, today_ist, trading_days_between, _is_trading_day
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ async def trigger_fetch(
 async def trigger_scan(
     db: DB,
     _user: AdminUser,
-    scanner: int = Query(1, ge=1, le=2),
+    scanner: int = Query(1, ge=1, le=3),
     scan_date: date = Query(default=None),
 ):
     """Run a scanner on existing data."""
@@ -43,9 +43,12 @@ async def trigger_scan(
     if scanner == 1:
         count = run_vcp_scanner(db, scan_date)
         return {"scanner": "VCP Daily", "scan_date": str(scan_date), "results": count}
-    else:
+    elif scanner == 2:
         count = run_tight_scanner(db, scan_date)
         return {"scanner": "Tight Consolidation", "scan_date": str(scan_date), "results": count}
+    else:
+        count = run_ipo_scanner(db, scan_date)
+        return {"scanner": "IPO Base", "scan_date": str(scan_date), "results": count}
 
 
 @router.post("/run-all")
@@ -61,11 +64,13 @@ async def trigger_all(
     run = await fetch_bhavcopy(db, scan_date)
     vcp_count = run_vcp_scanner(db, scan_date)
     tight_count = run_tight_scanner(db, scan_date)
+    ipo_count = run_ipo_scanner(db, scan_date)
 
     return {
         "fetch": {"status": run["status"], "inserted": run.get("inserted_count", 0)},
         "vcp": {"results": vcp_count},
         "tight": {"results": tight_count},
+        "ipo": {"results": ipo_count},
         "scan_date": str(scan_date),
     }
 
@@ -121,6 +126,7 @@ async def catch_up(db: DB, _user: AdminUser):
     # Run scanners on the latest day
     vcp_count = run_vcp_scanner(db, target)
     tight_count = run_tight_scanner(db, target)
+    ipo_count = run_ipo_scanner(db, target)
 
     return {
         "latest_before": str(last_date),
@@ -130,6 +136,7 @@ async def catch_up(db: DB, _user: AdminUser):
         "failed": sum(1 for r in results if r["status"] == "failed"),
         "vcp_results": vcp_count,
         "tight_results": tight_count,
+        "ipo_results": ipo_count,
         "details": results,
     }
 
@@ -171,14 +178,16 @@ async def cron_daily(key: str = Query(...)):
         run = await fetch_bhavcopy(db, target)
         vcp = run_vcp_scanner(db, target)
         tight = run_tight_scanner(db, target)
+        ipo = run_ipo_scanner(db, target)
 
-        logger.info(f"Cron daily completed: {run.get('inserted_count', 0)} bars, VCP={vcp}, Tight={tight}")
+        logger.info(f"Cron daily completed: {run.get('inserted_count', 0)} bars, VCP={vcp}, Tight={tight}, IPO={ipo}")
         return {
             "status": "completed",
             "date": str(target),
             "inserted": run.get("inserted_count", 0),
             "vcp_results": vcp,
             "tight_results": tight,
+            "ipo_results": ipo,
         }
     except Exception as e:
         logger.error(f"Cron daily failed: {e}")
