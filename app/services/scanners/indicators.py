@@ -49,53 +49,44 @@ def atr(highs: list[float], lows: list[float], closes: list[float],
 
 
 def fetch_all_bars(db: Client, scan_date: date) -> dict[str, list[dict]]:
-    """Fetch all daily_bars up to scan_date, grouped by symbol (newest first)."""
-    all_rows: list[dict] = []
-    page_size = 1000
-    offset = 0
-    while True:
-        batch = (
-            db.table("daily_bars")
-            .select("symbol, date, open, high, low, close, volume")
-            .lte("date", str(scan_date))
-            .range(offset, offset + page_size - 1)
-            .execute()
-            .data
-        )
-        all_rows.extend(batch)
-        if len(batch) < page_size:
-            break
-        offset += page_size
+    """Fetch all daily_bars up to scan_date, grouped by symbol (newest first).
+
+    Uses a single exec_sql RPC call with json_agg to fetch everything server-side,
+    instead of 60+ paginated PostgREST calls.
+    """
+    import json as _json
+
+    query = (
+        f"SELECT symbol, "
+        f"json_agg("
+        f"  json_build_object("
+        f"    'symbol', symbol, 'date', date::text,"
+        f"    'open', open, 'high', high, 'low', low,"
+        f"    'close', close, 'volume', volume"
+        f"  ) ORDER BY date DESC"
+        f") AS bars "
+        f"FROM daily_bars "
+        f"WHERE date <= '{scan_date}' "
+        f"GROUP BY symbol"
+    )
+    result = db.rpc("exec_sql", {"query": query}).execute()
+    rows = result.data or []
 
     grouped: dict[str, list[dict]] = {}
-    for row in all_rows:
+    for row in rows:
         sym = row["symbol"]
-        if sym not in grouped:
-            grouped[sym] = []
-        grouped[sym].append(row)
+        bars = row["bars"]
+        if isinstance(bars, str):
+            bars = _json.loads(bars)
+        grouped[sym] = bars
 
-    for bars in grouped.values():
-        bars.sort(key=lambda x: x["date"], reverse=True)
-
-    logger.info("Fetched %d bars for %d symbols", len(all_rows), len(grouped))
+    logger.info("Fetched bars for %d symbols via single exec_sql call", len(grouped))
     return grouped
 
 
 def fetch_name_map(db: Client) -> dict[str, str]:
-    """Fetch symbol → company name mapping."""
-    all_rows: list[dict] = []
-    page_size = 1000
-    offset = 0
-    while True:
-        batch = (
-            db.table("nse_stocks")
-            .select("symbol, name")
-            .range(offset, offset + page_size - 1)
-            .execute()
-            .data
-        )
-        all_rows.extend(batch)
-        if len(batch) < page_size:
-            break
-        offset += page_size
-    return {r["symbol"]: r["name"] for r in all_rows}
+    """Fetch symbol → company name mapping via single exec_sql call."""
+    result = db.rpc("exec_sql", {
+        "query": "SELECT symbol, name FROM nse_stocks"
+    }).execute()
+    return {r["symbol"]: r["name"] for r in (result.data or [])}

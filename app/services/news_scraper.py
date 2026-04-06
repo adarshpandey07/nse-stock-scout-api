@@ -92,6 +92,7 @@ async def scrape_all_sources(db: Client, symbol: str | None = None) -> int:
                 "source_name": source["name"],
                 "url": article.get("url", ""),
                 "news_type": "direct" if symbol else "market",
+                "published_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
             total += 1
 

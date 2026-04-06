@@ -14,6 +14,7 @@ from supabase import Client
 
 from app.services.activity import log_activity
 from app.services.config_service import get_active_config
+from app.services.scanners.indicators import fetch_all_bars, fetch_name_map
 
 logger = logging.getLogger(__name__)
 
@@ -40,20 +41,16 @@ def run_tight_scanner(db: Client, scan_date: date) -> int:
     min_close = fetch_cfg.get("min_close_price", 20)
     min_vol = fetch_cfg.get("min_avg_volume", 50000)
 
-    sym_result = db.rpc("exec_sql", {
-        "query": f"SELECT symbol FROM daily_bars WHERE date <= '{scan_date}' GROUP BY symbol HAVING COUNT(*) >= {lookback}"
-    }).execute()
-    symbols = [r["symbol"] for r in (sym_result.data or [])]
+    # Bulk fetch all bars + names in 2 API calls instead of N per-symbol calls
+    bars_by_symbol = fetch_all_bars(db, scan_date)
+    name_map = fetch_name_map(db)
 
     db.table("scan_results").delete().eq("scan_date", str(scan_date)).eq("scanner_type", SCANNER_ID).execute()
 
     results = []
-    for symbol in symbols:
-        bars_result = db.rpc("exec_sql", {
-            "query": f"SELECT date, open, high, low, close, volume FROM daily_bars WHERE symbol = '{symbol}' AND date <= '{scan_date}' ORDER BY date DESC LIMIT {lookback + 20}"
-        }).execute()
-        bars = bars_result.data or []
+    total = len(bars_by_symbol)
 
+    for symbol, bars in bars_by_symbol.items():
         if len(bars) < lookback:
             continue
 
@@ -102,9 +99,6 @@ def run_tight_scanner(db: Client, scan_date: date) -> int:
 
         if final_score >= min_score:
             vol_ratio = round(vol_lookback / vol_prior, 4) if vol_prior > 0 else 0
-            # Look up company name from nse_stocks
-            stock_info = db.table("nse_stocks").select("name").eq("symbol", symbol).limit(1).execute()
-            company_name = stock_info.data[0]["name"] if stock_info.data else symbol
 
             results.append({
                 "scan_date": str(scan_date), "symbol": symbol,
@@ -113,7 +107,7 @@ def run_tight_scanner(db: Client, scan_date: date) -> int:
                 "range_pct": round(range_pct, 2),
                 "volume_dry_ratio": vol_ratio,
                 "scanner_tag": "tight",
-                "company_name": company_name,
+                "company_name": name_map.get(symbol, symbol),
             })
 
     if results:
@@ -123,5 +117,5 @@ def run_tight_scanner(db: Client, scan_date: date) -> int:
     log_activity(db, event_type="scan_completed", entity_type="scanner",
                  entity_id=str(SCANNER_ID),
                  message=f"Tight Consolidation scanner completed for {scan_date}: {len(results)} stocks passed",
-                 status="completed", metadata_json={"count": len(results), "total_symbols": len(symbols)})
+                 status="completed", metadata_json={"count": len(results), "total_symbols": total})
     return len(results)
