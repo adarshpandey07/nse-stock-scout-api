@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
 from app.config import settings
-from app.dependencies import AdminUser, DB
+from app.dependencies import AdminUser, CurrentUser, DB
 from app.database import get_db
 from app.schemas.results import FetchRunOut
 from app.services.bhavcopy import fetch_bhavcopy, rebuild_history
@@ -32,7 +32,7 @@ async def trigger_fetch(
 @router.post("/run-scan")
 async def trigger_scan(
     db: DB,
-    _user: AdminUser,
+    _user: CurrentUser,
     background_tasks: BackgroundTasks,
     scanner: int = Query(1, ge=1, le=3),
     scan_date: date = Query(default=None),
