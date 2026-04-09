@@ -14,7 +14,7 @@ from supabase import Client
 
 from app.services.activity import log_activity
 from app.services.config_service import get_active_config
-from app.services.scanners.indicators import fetch_all_bars, fetch_name_map
+from app.services.scanners.indicators import fetch_all_bars, fetch_name_map, fetch_etf_symbols
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +44,14 @@ def run_tight_scanner(db: Client, scan_date: date) -> int:
     # Bulk fetch all bars + names in 2 API calls instead of N per-symbol calls
     bars_by_symbol = fetch_all_bars(db, scan_date)
     name_map = fetch_name_map(db)
-
-    db.table("scan_results").delete().eq("scan_date", str(scan_date)).eq("scanner_type", SCANNER_ID).execute()
+    etf_symbols = fetch_etf_symbols(db)
 
     results = []
     total = len(bars_by_symbol)
 
     for symbol, bars in bars_by_symbol.items():
+        if symbol in etf_symbols:
+            continue
         if len(bars) < lookback:
             continue
 
@@ -110,9 +111,10 @@ def run_tight_scanner(db: Client, scan_date: date) -> int:
                 "company_name": name_map.get(symbol, symbol),
             })
 
-    if results:
-        for i in range(0, len(results), 100):
-            db.table("scan_results").insert(results[i:i+100]).execute()
+    # Delete old + insert new back-to-back to avoid race condition with frontend polling
+    db.table("scan_results").delete().eq("scan_date", str(scan_date)).eq("scanner_type", SCANNER_ID).execute()
+    for i in range(0, len(results), 100):
+        db.table("scan_results").insert(results[i:i+100]).execute()
 
     log_activity(db, event_type="scan_completed", entity_type="scanner",
                  entity_id=str(SCANNER_ID),

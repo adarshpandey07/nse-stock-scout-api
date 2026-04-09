@@ -23,7 +23,7 @@ from supabase import Client
 
 from app.services.activity import log_activity
 from app.services.scanners.indicators import (
-    atr, sma, fetch_all_bars, fetch_name_map,
+    atr, sma, fetch_all_bars, fetch_name_map, fetch_etf_symbols,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,15 +34,14 @@ SCANNER_ID = 3
 def run_ipo_scanner(db: Client, scan_date: date) -> int:
     bars_by_symbol = fetch_all_bars(db, scan_date)
     name_map = fetch_name_map(db)
-
-    db.table("scan_results").delete() \
-        .eq("scan_date", str(scan_date)) \
-        .eq("scanner_type", SCANNER_ID).execute()
+    etf_symbols = fetch_etf_symbols(db)
 
     results = []
     total = len(bars_by_symbol)
 
     for symbol, bars in bars_by_symbol.items():
+        if symbol in etf_symbols:
+            continue
         closes = [float(b["c"]) for b in bars]
         highs = [float(b["h"]) for b in bars]
         lows = [float(b["l"]) for b in bars]
@@ -108,6 +107,10 @@ def run_ipo_scanner(db: Client, scan_date: date) -> int:
             "company_name": name_map.get(symbol, symbol),
         })
 
+    # Delete old + insert new back-to-back to avoid race condition with frontend polling
+    db.table("scan_results").delete() \
+        .eq("scan_date", str(scan_date)) \
+        .eq("scanner_type", SCANNER_ID).execute()
     for i in range(0, len(results), 100):
         db.table("scan_results").insert(results[i:i + 100]).execute()
 

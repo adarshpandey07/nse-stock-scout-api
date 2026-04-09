@@ -88,3 +88,15 @@ def fetch_name_map(db: Client) -> dict[str, str]:
         "query": "SELECT symbol, name FROM nse_stocks"
     }).execute()
     return {r["symbol"]: r["name"] for r in (result.data or [])}
+
+
+def fetch_etf_symbols(db: Client) -> set[str]:
+    """Fetch set of ETF/fund symbols to exclude from scanners."""
+    result = db.rpc("exec_sql", {
+        "query": (
+            "SELECT symbol FROM nse_stocks "
+            "WHERE name LIKE '%AMC -%' OR name LIKE '% ETF%' "
+            "OR symbol LIKE '%ETF%' OR symbol LIKE '%BEES%'"
+        )
+    }).execute()
+    return {r["symbol"] for r in (result.data or [])}
