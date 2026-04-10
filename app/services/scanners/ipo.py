@@ -24,6 +24,7 @@ from supabase import Client
 from app.services.activity import log_activity
 from app.services.scanners.indicators import (
     atr, sma, fetch_all_bars, fetch_name_map, fetch_etf_symbols,
+    fetch_listing_date_map,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,10 +32,19 @@ logger = logging.getLogger(__name__)
 SCANNER_ID = 3
 
 
+def _estimate_trading_days(listing_date: date, scan_date: date) -> int:
+    """Approximate trading days between two dates (~250 per year)."""
+    calendar_days = (scan_date - listing_date).days
+    if calendar_days <= 0:
+        return 0
+    return int(calendar_days * 250 / 365)
+
+
 def run_ipo_scanner(db: Client, scan_date: date) -> int:
     bars_by_symbol = fetch_all_bars(db, scan_date)
     name_map = fetch_name_map(db)
     etf_symbols = fetch_etf_symbols(db)
+    listing_dates = fetch_listing_date_map(db)
 
     results = []
     total = len(bars_by_symbol)
@@ -51,8 +61,14 @@ def run_ipo_scanner(db: Client, scan_date: date) -> int:
         vol = volumes[0]
 
         # ── Group 1: Recently listed (< 400 trading days) ──
-        if len(closes) >= 400:
-            continue
+        listing_dt = listing_dates.get(symbol)
+        if listing_dt:
+            if _estimate_trading_days(listing_dt, scan_date) >= 400:
+                continue
+        else:
+            # No NSE listing date available — fall back to bar count
+            if len(closes) >= 400:
+                continue
 
         # ── Group 2: Liquidity ──
         if close <= 50:
@@ -82,7 +98,7 @@ def run_ipo_scanner(db: Client, scan_date: date) -> int:
         sv50 = sma(volumes, 50)
         if sv10 is None:
             continue
-        # If < 50 bars, skip volume comparison (expected for fresh IPOs)
+        # If < 50 bars, skip volume comparison (Chartink also bypasses this)
         if sv50 is not None and sv10 >= sv50:
             continue
 
