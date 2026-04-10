@@ -2,6 +2,28 @@ from datetime import date, datetime, timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
+# NSE holidays for 2025 — weekday closures only
+# Source: https://www.nseindia.com/resources/exchange-communication-holidays
+NSE_HOLIDAYS_2025 = {
+    date(2025, 2, 26),  # Mahashivratri
+    date(2025, 3, 14),  # Holi
+    date(2025, 3, 31),  # Id-Ul-Fitr (Ramadan)
+    date(2025, 4, 10),  # Shri Mahavir Jayanti
+    date(2025, 4, 14),  # Dr. Baba Saheb Ambedkar Jayanti
+    date(2025, 4, 18),  # Good Friday
+    date(2025, 5, 1),   # Maharashtra Day
+    date(2025, 6, 7),   # Bakri Id (Id-Ul-Adha)
+    date(2025, 8, 15),  # Independence Day
+    date(2025, 8, 16),  # Janmashtami
+    date(2025, 8, 27),  # Milad-Un-Nabi
+    date(2025, 10, 1),  # Mahatma Gandhi Jayanti (observed)
+    date(2025, 10, 2),  # Dussehra
+    date(2025, 10, 21), # Diwali (Laxmi Puja)
+    date(2025, 10, 22), # Diwali (Balipratipada)
+    date(2025, 11, 5),  # Prakash Gurpurb Sri Guru Nanak Dev
+    date(2025, 12, 25), # Christmas
+}
+
 # NSE holidays for 2026 — weekday closures only (update annually)
 # Source: https://groww.in/p/nse-holidays, https://cleartax.in/s/nse-holidays-2026
 NSE_HOLIDAYS_2026 = {
@@ -26,7 +48,7 @@ NSE_HOLIDAYS_2026 = {
 
 def _is_trading_day(d: date) -> bool:
     """Check if a date is a valid NSE trading day (weekday + not a holiday)."""
-    return d.weekday() < 5 and d not in NSE_HOLIDAYS_2026
+    return d.weekday() < 5 and d not in NSE_HOLIDAYS_2025 and d not in NSE_HOLIDAYS_2026
 
 
 def today_ist() -> date:
