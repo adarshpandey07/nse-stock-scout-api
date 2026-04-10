@@ -33,8 +33,8 @@ def run_tight_scanner(db: Client, scan_date: date) -> int:
     w_days = weights.get("days_in_range", 30)
     total_weight = w_range + w_vol + w_days
 
-    lookback = scanner_cfg.get("lookback_days", 20)
-    max_range_pct = scanner_cfg.get("max_range_pct", 10.0)
+    lookback = scanner_cfg.get("lookback_days", 7)
+    max_range_pct = scanner_cfg.get("max_range_pct", 5.0)
     min_score = scanner_cfg.get("min_score", 50)
 
     fetch_cfg = config.get("fetch", {})
@@ -70,14 +70,14 @@ def run_tight_scanner(db: Client, scan_date: date) -> int:
         low_n = min(lows[:lookback])
         range_pct = ((high_n - low_n) / current_close) * 100 if current_close > 0 else 999
 
-        if range_pct > max_range_pct:
+        if range_pct < 1.0 or range_pct > max_range_pct:
             continue
 
         range_score = 0
-        if range_pct < 3: range_score = 100
-        elif range_pct < 5: range_score = 80
-        elif range_pct < 7: range_score = 60
-        elif range_pct < max_range_pct: range_score = 40
+        if range_pct < 2: range_score = 100
+        elif range_pct < 3: range_score = 80
+        elif range_pct < 4: range_score = 60
+        elif range_pct <= max_range_pct: range_score = 40
 
         vol_lookback = sum(volumes[:lookback]) / lookback
         vol_prior = sum(volumes[lookback:lookback+20]) / 20 if len(volumes) >= lookback + 20 else sum(volumes[lookback:]) / max(len(volumes) - lookback, 1)
