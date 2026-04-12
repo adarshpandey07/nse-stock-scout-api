@@ -136,31 +136,11 @@ def _cache_listing_dates(db: Client, data: dict[str, date]) -> None:
     if not data:
         return
     try:
-        # Ensure column exists (idempotent)
-        db.rpc("exec_sql", {
-            "query": (
-                "ALTER TABLE nse_stocks ADD COLUMN IF NOT EXISTS "
-                "listing_date DATE"
-            )
-        }).execute()
-
-        # Batch upsert via CASE statement (fast, single query per batch)
-        symbols = list(data.items())
-        batch_size = 500
-        for i in range(0, len(symbols), batch_size):
-            batch = symbols[i:i + batch_size]
-            cases = " ".join(
-                f"WHEN '{sym}' THEN '{dt.isoformat()}'"
-                for sym, dt in batch
-            )
-            sym_list = ",".join(f"'{sym}'" for sym, _ in batch)
-            db.rpc("exec_sql", {
-                "query": (
-                    f"UPDATE nse_stocks SET listing_date = CASE symbol "
-                    f"{cases} END::date "
-                    f"WHERE symbol IN ({sym_list})"
-                )
-            }).execute()
+        rows = [{"symbol": sym, "listing_date": dt.isoformat()} for sym, dt in data.items()]
+        for i in range(0, len(rows), 500):
+            db.table("nse_stocks").upsert(
+                rows[i:i + 500], on_conflict="symbol"
+            ).execute()
         logger.info("Cached listing dates for %d symbols in nse_stocks", len(data))
     except Exception as e:
         logger.warning("Failed to cache listing dates: %s", e)

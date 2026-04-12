@@ -10,10 +10,11 @@ Group 2 (Liquidity):
   Close > 50  AND  Volume > 100,000
 
 Group 3 (Technical tightening — ALL):
-  a) Close > Max(60d High) × 0.85
-  b) Max(10d H) − Min(10d L) < (Max(40d H) − Min(40d L)) × 0.5
-  c) SMA(Volume, 10) < SMA(Volume, 50)
-  d) ATR(14) / Close < 0.07
+  a) Close > Previous Close  (positive day)
+  b) Close > Max(50d High) × 0.85
+  c) Max(10d H) − Min(10d L) < (Max(40d H) − Min(40d L)) × 0.5
+  d) SMA(Volume, 10) < SMA(Volume, 50)
+  e) ATR(14) / Close < 0.07
 """
 
 import logging
@@ -80,20 +81,24 @@ def run_ipo_scanner(db: Client, scan_date: date) -> int:
         if len(bars) < 10:
             continue
 
-        # 3a. Close > Max(60d High) × 0.85
-        n60 = min(60, len(highs))
-        max_h = max(highs[:n60])
+        # 3a. Positive day: Close > Previous Close
+        if len(closes) >= 2 and close <= closes[1]:
+            continue
+
+        # 3b. Close > Max(50d High) × 0.85
+        n50 = min(50, len(highs))
+        max_h = max(highs[:n50])
         if close <= max_h * 0.85:
             continue
 
-        # 3b. 10d range < 40d range × 0.5
+        # 3c. 10d range < 40d range × 0.5
         r10 = max(highs[:10]) - min(lows[:10])
         n40 = min(40, len(highs))
         r40 = max(highs[:n40]) - min(lows[:n40])
         if r40 > 0 and r10 >= r40 * 0.5:
             continue
 
-        # 3c. SMA(Volume, 10) < SMA(Volume, 50)
+        # 3d. SMA(Volume, 10) < SMA(Volume, 50)
         sv10 = sma(volumes, 10)
         sv50 = sma(volumes, 50)
         if sv10 is None:
@@ -102,7 +107,7 @@ def run_ipo_scanner(db: Client, scan_date: date) -> int:
         if sv50 is not None and sv10 >= sv50:
             continue
 
-        # 3d. ATR(14) / Close < 0.07
+        # 3e. ATR(14) / Close < 0.07
         atr14 = atr(highs, lows, closes)
         if atr14 is None or atr14 / close >= 0.07:
             continue
