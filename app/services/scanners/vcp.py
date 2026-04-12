@@ -5,14 +5,14 @@ Volatility Contraction Pattern — ALL conditions must pass:
  1. Close > 20
  2. Close > EMA(Close, 50)
  3. EMA(Close, 50) > EMA(Close, 150)
- 4. EMA(Close, 150) > EMA(Close, 200)
+ 4. EMA(Close, 150) > EMA(Close, 200)  — skipped if < 200 bars
  5. Close > Max(20d High) × 0.95
  6. Max(20d High) − Min(20d Low) < Max(60d High) − Min(60d Low)
  7. Max(10d High) − Min(10d Low) < Max(20d High) − Min(20d Low)
  8. SMA(Volume, 10) < SMA(Volume, 50)
  9. Close × Volume > 1,000,000
 10. ATR(14) / Close < 0.06
-11. EMA(Close, 200) > EMA(Close, 200) from 20 days ago
+11. Long EMA rising vs 10 days ago  — uses EMA(200) if available, else EMA(150)
 """
 
 import logging
@@ -63,9 +63,10 @@ def run_vcp_scanner(db: Client, scan_date: date) -> int:
         if ema150 is None or ema50 <= ema150:
             continue
 
-        # 4. EMA(150) > EMA(200)
+        # 4. EMA(150) > EMA(200) — skip if not enough bars; 0.5% tolerance
+        #    for limited-history EMA seed drift vs Chartink's longer history
         ema200 = ema(closes, 200)
-        if ema200 is None or ema150 <= ema200:
+        if ema200 is not None and ema150 < ema200 * 0.995:
             continue
 
         # 5. Close > Max(20d High) × 0.95
@@ -103,14 +104,21 @@ def run_vcp_scanner(db: Client, scan_date: date) -> int:
         if atr14 is None or atr14 / close >= 0.06:
             continue
 
-        # 11. EMA(200) rising vs 20 days ago
-        if len(closes) < 220:
-            continue
-        ema200_ago = ema(closes[20:], 200)
-        if ema200_ago is None or ema200 <= ema200_ago:
-            continue
+        # 11. Long EMA rising — use EMA(200) if available, else EMA(150)
+        if ema200 is not None and len(closes) >= 210:
+            ema_ago = ema(closes[10:], 200)
+            if ema_ago is None or ema200 <= ema_ago:
+                continue
+        else:
+            # Fallback for stocks with < 200 bars: use EMA(150) rising
+            if len(closes) >= 160:
+                ema150_ago = ema(closes[10:], 150)
+                if ema150_ago is None or ema150 <= ema150_ago:
+                    continue
+            else:
+                continue
 
-        # ── All 11 conditions passed ──
+        # ── All conditions passed ──
         range_pct = round((r10 / close) * 100, 2) if close > 0 else 0
         vol_ratio = round(sv10 / sv50, 4) if sv50 > 0 else 0
 
@@ -136,7 +144,7 @@ def run_vcp_scanner(db: Client, scan_date: date) -> int:
     log_activity(
         db, event_type="scan_completed", entity_type="scanner",
         entity_id=str(SCANNER_ID),
-        message=f"VCP scanner: {len(results)}/{total} passed all 11 conditions on {scan_date}",
+        message=f"VCP scanner: {len(results)}/{total} passed all conditions on {scan_date}",
         status="completed",
         metadata_json={"count": len(results), "total_symbols": total},
     )
